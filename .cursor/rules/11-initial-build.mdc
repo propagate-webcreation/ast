@@ -1,0 +1,214 @@
+---
+description: "初稿ビルド時の必須設計チェックリスト — 新規サイト作成、初期実装、テンプレートセットアップ時に参照"
+globs:
+  - "app/layout.tsx"
+  - "app/config/*.ts"
+  - "app/globals.css"
+alwaysApply: false
+---
+
+# 初稿ビルド — 必須設計チェックリスト
+
+> ⚠ legacy補助ルール: 矛盾時は `01-rule-priority-v3.mdc` と `05-v3-core.mdc` を優先する。
+
+> 349件の修正データで「初稿→修正で必ず追加される」と判明した項目を最初から組み込む。
+
+---
+
+## 1. layout.tsx の基盤設定
+
+```tsx
+<html lang="ja" suppressHydrationWarning>
+  <body className="antialiased font-body" suppressHydrationWarning>
+```
+
+### viewport
+```tsx
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+```
+`user-scalable=no` / `maximum-scale=1` は設定禁止。
+
+### メタデータ
+```tsx
+export const metadata: Metadata = {
+  title: "サイト名 | キャッチフレーズ",
+  description: "80〜120文字の説明",
+  keywords: ["地域名 業種", "サービス名"],
+  alternates: { canonical: "https://www.example.com" },
+  openGraph: {
+    title: "サイト名 | キャッチフレーズ",
+    description: "80〜120文字の説明",
+    type: "website",
+    locale: "ja_JP",
+  },
+  twitter: { card: "summary_large_image" },
+};
+```
+
+---
+
+## 2. globals.css
+
+```css
+@import "tailwindcss";
+
+:root {
+  --font-display: "Noto Sans JP", sans-serif;
+  --font-body: "Noto Sans JP", sans-serif;
+  --btn-primary: #0066FF;
+  --accent: #0066FF;
+}
+
+@theme {
+  --font-family-display: var(--font-display);
+  --font-family-body: var(--font-body);
+}
+
+html { scroll-behavior: smooth; }
+
+/* テキスト折り返し最適化 ※必須 — 削除・変更禁止
+   html lang="ja" が必須。未対応ブラウザでは通常改行にフォールバック
+   h1 はヒーローキャッチコピー等の違和感防止のため balance / auto-phrase を適用しない */
+h1 {
+  text-wrap: wrap;
+  word-break: normal;
+}
+h2, h3, h4, h5, h6 {
+  text-wrap: balance;
+  word-break: auto-phrase;
+}
+/* 本文（p, li）は iOS Safari で text-wrap: pretty が右側余白をガタつかせるため適用しない */
+
+@media screen and (max-width: 768px) {
+  html { -webkit-text-size-adjust: 100%; }
+}
+
+.scroll-animate {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+.scroll-animate.animate-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+```
+
+globals.css でのコンポーネントスタイリング（`.card {}` / `span {}` 等）は禁止。上記の初期セットアップ（font-family / text-wrap）のみ許可。
+**理由:** globals.css に書いた要素セレクタは unlayered（レイヤーなし）になり、`@layer utilities` 内の Tailwind ユーティリティより常に優先される。`span { font-size: 13px; }` のようなルールを書くと、`text-[24px]` 等が効かなくなる（10-typography「@layer 問題」参照）。
+
+---
+
+## 3. site.config.ts
+
+```tsx
+// app/config/site.config.ts
+export const SITE_CONFIG = {
+  name: "株式会社〇〇",
+  representative: "代表者名",
+  tel: "03-XXXX-XXXX",
+  fax: "",
+  email: "info@example.com",
+  postalCode: "〒XXX-XXXX",
+  address: "東京都〇〇区〇〇1-2-3",
+  lineUrl: "#",
+  instagramUrl: "#",
+  businessHours: "平日 10:00 - 18:00",
+  holidays: "土日祝",
+  responseTime: "2営業日",
+  founded: "",
+  mapEmbedUrl: "",
+} as const;
+```
+
+---
+
+## 4. セクション設計
+
+- 全 section に `id` 属性必須
+- セマンティクス: `<section>` + `aria-label`（ヒーロー等）、装飾に `aria-hidden`
+- 余白: `py-[50px] md:py-[100px]`、h2下: `mb-5 md:mb-[40px]`
+
+---
+
+## 5. コンテンツ設計原則
+
+### 配列管理
+```tsx
+const services = [
+  { title: "サービスA", description: "説明...", image: "/img/photos/service-a.jpg", imagePosition: "object-center", icon: Wrench },
+];
+```
+
+### 見出しに社名を含める
+```tsx
+<h2><span className="text-[var(--accent)]">{SITE_CONFIG.name}</span>が選ばれる理由</h2>
+```
+
+### alt は日本語、キャッチコピーは具体的・行動喚起型
+
+---
+
+## 6. グリッド・カード
+
+```tsx
+<div className="flex flex-col md:grid md:grid-cols-3 gap-6 md:gap-8 items-stretch">
+  <div className="h-full flex flex-col">
+    <div className="relative shrink-0 w-full h-[220px]">
+      <Image src={item.image} alt="..." fill className={`object-cover ${item.imagePosition}`} />
+    </div>
+    <div className="flex-1 flex flex-col p-6">
+      <h3 className="text-[18px] md:text-[26px] md:min-h-[66px] font-bold leading-snug">{item.title}</h3>
+      <p className="text-[13px] md:text-[16px] leading-relaxed flex-grow">{item.description}</p>
+      <a href={item.href} className="mt-auto ...">詳しく見る</a>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+## 7. ヒーロー — CSS背景画像パターン
+
+```tsx
+<section
+  className="relative w-full min-h-[500px] md:min-h-[700px] flex flex-col justify-center bg-cover bg-center bg-no-repeat"
+  style={{ backgroundImage: "url('/img/photos/hero.jpg')" }}
+  aria-label="ヒーロー"
+>
+  <div className="absolute inset-0 bg-black/50" aria-hidden />
+  <div className="container mx-auto px-5 md:px-10 py-12 md:py-24 relative z-10">
+    <h1 className="text-white text-[32px] md:text-[40px] font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">...</h1>
+  </div>
+</section>
+```
+
+---
+
+## 8. 初稿完了チェックリスト
+
+- [ ] JSX 内アポストロフィ → `{"'"}` / `&apos;`
+- [ ] 未使用 import なし
+- [ ] `<img>` → `<Image>` 済み
+- [ ] `next/font/google` スペル正しい
+- [ ] JSX 含む props は `ReactNode`
+- [ ] `.map()` に `key` 付与
+- [ ] `@import` は CSS 最上部
+- [ ] ScrollAnimator 実装済み
+- [ ] MobileCTA 固定バー実装済み
+- [ ] FAQ アコーディオン（details/summary）
+- [ ] セクション背景色の交互配置
+- [ ] globals.css にテキスト折り返し最適化（balance / pretty / auto-phrase）が存在する
+- [ ] `html lang="ja"` が設定されている（auto-phrase の動作に必須）
+
+---
+
+## 9. 初稿で不要なもの（後工程）
+
+| 後回し | 理由 |
+|--------|------|
+| 実写画像 | Unsplash 代用→後で差替 |
+| Google Maps 正式 URL | プレースホルダーで可 |
+| 実績の数値 | 仮データで可 |
+| GTM ID / GA4 イベント | 後工程で追加 |
+| 正式な沿革 | AI推測の沿革は修正対象 |

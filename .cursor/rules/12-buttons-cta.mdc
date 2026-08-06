@@ -1,0 +1,50 @@
+---
+description: "ボタン・CTA — 統一ルール・色・形状・文言"
+globs:
+  - "app/**/*.tsx"
+  - "components/**/*.tsx"
+alwaysApply: true
+---
+
+# ボタン・CTA
+
+> ⚠ legacy補助ルール: 矛盾時は `01-rule-priority-v3.mdc` と `05-v3-core.mdc` を優先する。
+
+## ボタン共通
+
+- 全ボタンに**アイコン + ラベル**併記
+- 角丸: `rounded-2xl`（サイト内統一）
+- 背景: 有彩色の不透明塗りつぶし必須（`bg-transparent` / `bg-white` 禁止）
+- ボタンテキストとボタン色に**十分な明度差**を確保（視認性必須）
+- ボタン内の文言は**太字**（`font-bold`）
+- hover: `hover:opacity-90 hover:shadow-md transition`（ボタン以外のhover禁止）
+- duration: 最大 500ms
+- `whitespace-nowrap` 禁止（`w-full` と競合し SP でボタンがビューポートを突き破る原因になる）
+
+```tsx
+// ❌ w-full があっても whitespace-nowrap があるとボタン幅がテキスト幅で決まってしまう
+<a className="w-full whitespace-nowrap">電話で今すぐ無料相談 080-3668-9292</a>
+
+// ✅ whitespace-nowrap を外す。テキストが折り返されても w-full でボタン幅は保たれる
+<a className="w-full">電話で今すぐ無料相談 080-3668-9292</a>
+```
+
+## LINE ボタン
+
+- `bg-[#06C755]` + LINE公式アイコン必須
+- 緑は**LINEのみ**に使用（他のボタンに緑を使わない）
+
+## CTA 統一
+
+- ボタン色はサイト全体で1色
+- 文言は具体的（「LINEで簡単見積もり」「電話でお問い合わせ」）
+- 「お問い合わせ」「こちら」「詳しくはこちら」等の汎用文言は禁止
+- CTA は `shared/CTA.tsx` 単一実装。ページ固有のCTAコンポーネント作成禁止
+- CTA がサイト内で**一番目立つ**こと（CTAと同じ形状・色のデザイン要素を作らない）
+- CVポイント付近にSNS遷移ボタンを配置しない（離脱防止）
+
+## 電話番号ボタン
+
+- 電話番号もクリック可能なボタン形式にする
+- `href`: ハイフンなし（`tel:0312345678`）
+- 表示テキスト: ハイフン付き（`03-1234-5678`）

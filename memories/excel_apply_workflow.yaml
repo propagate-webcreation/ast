@@ -1,0 +1,61 @@
+# Excel Apply Workflow
+
+Excelファイルに記入された修正指示を読み取り、サイトに反映するワークフローです。
+プロジェクト固有の設定は不要で、汎用的に動作します。
+
+## 手順
+
+1. Site-Fix/input/ ディレクトリ内の最新の .xlsx ファイルを検索
+2. Pythonスクリプトで修正指示を抽出：
+   ```python
+   import openpyxl
+   wb = openpyxl.load_workbook('ファイルパス')
+   ws = wb.active
+   for row in ws.iter_rows(min_row=7, values_only=True):
+       page, section, content, revision = row
+       if revision and str(revision).strip():
+           print(f'【ページ】{page}')
+           print(f'【セクション】{section}')
+           print(f'【修正内容】{revision}')
+   ```
+3. サイト構造を動的に把握：
+   - app/components/shared/Header.tsx からナビゲーション順を取得
+   - 各ページの page.tsx からコンポーネント構成を取得
+   - セクション名とコンポーネントの対応を動的に構築
+4. 各修正指示について対象コンポーネントを特定し、修正を実行
+
+## セクション名 → コンポーネント照合ルール
+
+セクション名に含まれるキーワードでコンポーネントを特定：
+
+| キーワード | 検索パターン |
+|-----------|-------------|
+| ヘッダー | Header.tsx |
+| フッター | Footer.tsx |
+| ヒーロー | *Hero*.tsx |
+| 特徴 / Feature | *Feature*.tsx |
+| 記事 / Article | *Article*.tsx |
+| トレンド / Trend | *Trend*.tsx |
+| コラム / Column | *Column*.tsx |
+| CTA | *Cta*.tsx |
+| コンセプト / Concept | *Concept*.tsx |
+| ミッション / MISSION | *Mission*.tsx |
+| バリュー / VALUE | *Value*.tsx |
+| ビジョン / VISION | *Vision*.tsx |
+| フォーム / Form | *Form*.tsx |
+| イントロ / Intro | *Intro*.tsx |
+
+※ ページ名も考慮して対象を絞り込む
+
+## コマンドの使い分け
+
+| コマンド | 読み取る列 | 用途 |
+|---------|-----------|------|
+| /excel-apply | D列（修正内容） | クライアントからの修正指示を反映 |
+| /excel-apply-director | E列（ディレクター確認欄） | ディレクターからの追加修正を反映 |
+
+## 注意事項
+
+- 修正指示は自然言語で記載可能（AIが解釈）
+- セクション名とコンポーネントの対応は動的に解決（プロジェクト固有設定不要）
+- 1回の実行で複数の修正を適用可能

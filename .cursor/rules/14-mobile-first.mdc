@@ -1,0 +1,62 @@
+---
+description: "モバイルファースト — SP/PCレスポンシブの基本原則"
+globs:
+  - "app/**/*.tsx"
+  - "components/**/*.tsx"
+alwaysApply: true
+---
+
+# モバイルファースト
+
+> ⚠ legacy補助ルール: 矛盾時は `01-rule-priority-v3.mdc` と `05-v3-core.mdc` を優先する。
+
+プレフィックスなし = モバイル（0〜639px）。PC値は必ず `md:` 付き。
+
+```tsx
+// ✅
+py-[50px] md:py-[100px]
+grid-cols-1 md:grid-cols-3
+text-[13px] md:text-[16px]
+// ❌（モバイルに大きい値が適用される）
+py-[100px]
+grid-cols-3
+text-[16px]
+```
+
+## SP レイアウト固有
+
+- 1カラム縦並びが原則（`grid-cols-2` 以上は禁止。小カードのみ例外）
+- 画像最大: `max-w-[340px] max-h-[255px]`
+- ボタン高さ: `h-12`（48px）以上
+- 住所・電話番号などの長文インライン要素は `flex items-start` + `shrink-0` で構成し、`whitespace-nowrap` は付けない
+
+## SP修正時の禁止
+
+- `md:` / `lg:` 値の変更
+- プレフィックスなし `<br />` の新規挿入
+- DOM構造変更
+- `whitespace-nowrap` の付与（ナビリンクを除くすべての要素に禁止）
+
+## Flex コンテナのオーバーフロー禁止パターン
+
+`whitespace-nowrap` を持つ子要素が1つでもあると、Flex コンテナ全体がビューポート幅を超えて広がる。
+これにより **同じコンテナ内の見出し・ボタンなど無関係な要素まで右にはみ出す**。
+
+```tsx
+// ❌ 住所などの長文に whitespace-nowrap → 親全体がオーバーフロー
+<p className="flex items-center gap-2 whitespace-nowrap">
+  <MapPin size={16} />
+  <span>〒500-0000 ○○県○○市…（長い住所）</span>
+</p>
+
+// ✅ 長文テキストには whitespace-nowrap を付けない。アイコンは items-start + mt で調整
+<p className="flex items-start gap-2">
+  <MapPin size={16} className="shrink-0 mt-[3px]" />
+  <span>〒500-0000 ○○県○○市…（長い住所）</span>
+</p>
+```
+
+発生しやすい箇所:
+- FV の住所・キャッチコピー副文
+- CTA セクションのボタン群
+- カード内の説明文

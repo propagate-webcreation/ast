@@ -1,0 +1,38 @@
+# ルール優先順位（v3優先）
+
+このプロジェクトのルールは、以下の優先順位で解釈する。
+矛盾がある場合は、番号が小さいものを優先する。
+
+## 1) v3コアルール（最優先）
+
+- `05-v3-core.mdc`
+- `webcreate-bot-v3` の system prompt / Hard Gate の思想を反映した基準
+
+## 2) プロジェクト運用の安全ルール（必須）
+
+- `00-do-not-remove.mdc`（社内連携タグの保護）
+- `22-prohibited-libraries.mdc`（禁止ライブラリ）
+- `30-ufa-form-guardrail.mdc`（UFA 連携保護）
+- `20-nextjs-cache.mdc`（キャッシュ障害対処）
+- `21-page-deletion.mdc`（URL到達性の削除手順）
+- `command-execution.md` / `workflows.md`（運用手順）
+
+## 3) 既存スタイル詳細ルール（補助）
+
+- `10-typography.mdc`
+- `11-initial-build.mdc`
+- `12-buttons-cta.mdc`
+- `13-sections.mdc`
+- `14-mobile-first.mdc`
+- `15-decoration.mdc`
+- `16-content-rules.mdc`
+- `17-page-layout.mdc`
+- `18-common-impl.mdc`
+- `19-design-apply.mdc`
+- `60-mobile-viewport-ios.mdc`
+
+## 運用方針
+
+- 既存ルールを即時削除せず、まずは本優先順位で吸収する。
+- 同じテーマの重複ルールは、段階的に `05-v3-core.mdc` へ統合する。
+- タイポ・改行・FV・CTA・Hard Gate 系の判断は常に v3 基準を採用する。

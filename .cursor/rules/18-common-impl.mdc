@@ -1,0 +1,455 @@
+---
+description: "頻出する実装パターンのリファレンス（GTM / 電話リンク / Google Maps / FAQ / スクロールアニメ / SP固定CTA / Header）"
+globs:
+  - "app/**/*.tsx"
+  - "components/**/*.tsx"
+alwaysApply: false
+---
+
+# 頻出実装パターン集
+
+> ⚠ legacy補助ルール: 矛盾時は `01-rule-priority-v3.mdc` と `05-v3-core.mdc` を優先する。
+
+> **349件の修正データで繰り返し登場する実装パターンを標準化する。**
+> 案件ごとに0から作り直すのではなく、ここに記載のテンプレートを基に実装する。
+
+---
+
+## 1. GTM（Google Tag Manager）実装
+
+**発生頻度: 72%**
+
+### layout.tsx への設置
+
+```tsx
+// app/layout.tsx — <head> 内
+<Script
+  id="google-tag-manager"
+  strategy="afterInteractive"
+  dangerouslySetInnerHTML={{
+    __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-XXXXXXXX');`,
+  }}
+/>
+
+// <body> 直後
+<noscript>
+  <iframe
+    src="https://www.googletagmanager.com/ns.html?id=GTM-XXXXXXXX"
+    height="0"
+    width="0"
+    style={{ display: "none", visibility: "hidden" }}
+  />
+</noscript>
+```
+
+### GTM ID の体系管理（推奨）
+
+```tsx
+// app/config/gtm.config.ts
+export const GTM_IDS = {
+  HEADER_CONTACT: "gtm-button-header-contact",
+  HEADER_TEL: "gtm-button-header-tel",
+  HERO_PRIMARY_CTA: "gtm-button-hero-primary-cta",
+  CTA_SECTION: "gtm-button-cta-section",
+  FIXED_FOOTER_CONTACT: "gtm-button-fixed-footer-contact",
+  FORM_SUBMIT: "gtm-button-form-submit",
+} as const;
+```
+
+### GA4 カスタムイベント送信
+
+```tsx
+declare global {
+  interface Window {
+    gtag?: (...args: unknown[]) => void;
+    dataLayer?: unknown[];
+  }
+}
+
+const handleClick = (location: string) => {
+  if (typeof window !== "undefined" && window.gtag) {
+    window.gtag("event", "button_click", {
+      button_location: location,
+    });
+  }
+};
+```
+
+---
+
+## 2. 電話番号リンク（tel:）
+
+**発生頻度: 多数**
+
+### 基本ルール
+
+| 項目 | 値 |
+|---|---|
+| `href` | ハイフンなし（`tel:0312345678`） |
+| 表示テキスト | ハイフン付き（`03-1234-5678`） |
+| 数字フォント | `font-lato` / `font-mono`（等幅推奨） |
+
+### 実装例
+
+```tsx
+<a
+  href="tel:0312345678"
+  className="inline-flex items-center hover:underline"
+>
+  <Phone size={18} className="mr-2" aria-hidden />
+  <span className="font-lato">03-1234-5678</span>
+</a>
+```
+
+### 受付時間の補足
+
+> 電話番号の大表示は 19-typography テーブル外の特殊 UI。このサイズのみ例外として許容する。
+
+```tsx
+<div className="text-center">
+  <a href="tel:0312345678" className="text-[28px] md:text-[36px] font-bold font-lato">
+    03-1234-5678
+  </a>
+  <p className="text-[10px] md:text-[14px] text-gray-400 mt-1">
+    受付時間: 平日 9:00〜18:00
+  </p>
+</div>
+```
+
+---
+
+## 3. Google Maps iframe 埋め込み
+
+**発生頻度: 会社概要セクションで多数**
+
+### 基本テンプレート
+
+```tsx
+<div className="w-full h-[200px] md:h-[280px] rounded-sm overflow-hidden">
+  <iframe
+    src="https://www.google.com/maps/embed?pb=!1m18!..."
+    width="100%"
+    height="100%"
+    style={{ border: 0 }}
+    allowFullScreen
+    loading="lazy"
+    referrerPolicy="no-referrer-when-downgrade"
+    title="所在地"
+  />
+</div>
+```
+
+### 必須属性
+
+| 属性 | 値 | 理由 |
+|---|---|---|
+| `loading="lazy"` | 遅延読み込み | LCP 改善 |
+| `referrerPolicy` | `no-referrer-when-downgrade` | セキュリティ |
+| `style={{ border: 0 }}` | 枠線除去 | JSX ではオブジェクト形式 |
+| `title` | 「所在地」等 | アクセシビリティ |
+
+---
+
+## 4. FAQ アコーディオン
+
+**発生頻度: 27件以上**
+
+`<details>` / `<summary>` によるネイティブ HTML アコーディオン。JS不要。
+
+```tsx
+const faqItems = [
+  { q: "1台だけでもお願いできますか？", a: "もちろんです。1台からお気軽にどうぞ。" },
+  { q: "土日祝日も対応していますか？", a: "はい、年中無休で対応しております。" },
+];
+
+<section id="faq" className="py-[50px] md:py-[100px]">
+  <h2 className="text-[24px] md:text-[32px] font-bold text-center mb-5 md:mb-[40px]">
+    よくあるご質問
+  </h2>
+  <div className="space-y-4 max-w-[800px] mx-auto">
+    {faqItems.map((item, i) => (
+      <details
+        key={i}
+        className="group bg-white rounded-sm overflow-hidden border border-gray-100"
+      >
+        <summary className="flex items-center justify-between py-5 px-6 cursor-pointer list-none font-bold text-[16px] md:text-[20px] hover:bg-gray-50 transition-colors [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-3">
+            <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[14px] shrink-0">
+              Q{i + 1}
+            </span>
+            {item.q}
+          </span>
+          <ChevronDown size={20} className="shrink-0 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="px-6 pb-5 text-[13px] md:text-[16px] text-gray-600 leading-relaxed">
+          {item.a}
+        </div>
+      </details>
+    ))}
+  </div>
+</section>
+```
+
+### スタイル要点
+
+| クラス | 理由 |
+|---|---|
+| `[&::-webkit-details-marker]:hidden` | デフォルト▶を非表示 |
+| `group-open:rotate-180` | 開閉時に矢印を回転 |
+| `list-none` | Firefox のリストマーカー除去 |
+
+---
+
+## 5. スクロールアニメーション（IntersectionObserver）
+
+**発生頻度: 32件以上**
+
+### ScrollAnimator コンポーネント
+
+```tsx
+// app/components/shared/ScrollAnimator.tsx
+"use client";
+import { useEffect } from "react";
+
+export default function ScrollAnimator() {
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("animate-visible");
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: "0px 0px -50px 0px" }
+    );
+    document.querySelectorAll(".scroll-animate").forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+  return null;
+}
+```
+
+### globals.css に追加する定義（初期セットアップとして許可 — 90-prohibited 参照）
+
+```css
+.scroll-animate {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+.scroll-animate.animate-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+```
+
+### layout.tsx への配置
+
+```tsx
+<body>
+  <ScrollAnimator />
+  <Header />
+  {children}
+  <Footer />
+</body>
+```
+
+### 使い方
+
+```tsx
+<div className="scroll-animate">
+  <h2>セクション見出し</h2>
+</div>
+
+{/* カードに遅延付き */}
+{items.map((item, i) => (
+  <div key={i} className="scroll-animate" style={{ transitionDelay: `${i * 100}ms` }}>
+    ...
+  </div>
+))}
+```
+
+---
+
+## 6. スマホ CTA 固定バー（fixed bottom）
+
+**発生頻度: 多数**
+
+SP 画面下部に固定表示する CTA バー。PC では非表示。
+
+### テンプレート
+
+```tsx
+<div className="fixed bottom-0 w-full bg-white/90 backdrop-blur border-t border-stone-200 p-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] flex gap-3 md:hidden z-40">
+  <a
+    href="tel:08012345678"
+    className="flex-1 bg-stone-800 text-white font-bold py-3 rounded-2xl text-center text-[13px] flex items-center justify-center transition-transform active:scale-95"
+  >
+    <Phone size={16} className="mr-2" aria-hidden />
+    電話予約
+  </a>
+  <a
+    href="https://line.me/..."
+    className="flex-1 bg-[#06C755] text-white font-bold py-3 rounded-2xl text-center text-[13px] flex items-center justify-center transition-transform active:scale-95"
+  >
+    LINE予約
+  </a>
+</div>
+```
+
+### 実装ポイント
+
+| 属性 | 値 | 理由 |
+|---|---|---|
+| `fixed bottom-0` | 画面下部固定 | スクロール中も常時表示 |
+| `md:hidden` | PC 非表示 | SP 専用の導線 |
+| `z-40` | Header（z-50）より下 | 重なり順の管理 |
+| `backdrop-blur` | 背景ぼかし | コンテンツと重なっても視認性確保 |
+| `active:scale-95` | タップフィードバック | モバイル操作感 |
+
+### 本文に下余白を追加（コンテンツが隠れないように）
+
+```tsx
+<main className="pb-[80px] md:pb-0">
+  {/* コンテンツ */}
+</main>
+```
+
+> **shadow-[0_-4px_...]** は固定バーの機能的な影であり、装飾目的の shadow 禁止ルール（90-prohibited）の例外に該当する。
+
+---
+
+## 7. Header の頻出パターン
+
+### 7-1. sticky vs fixed
+
+| 方式 | 特徴 | 推奨 |
+|---|---|---|
+| `sticky top-0` | コンテンツの mt が不要 | **推奨** |
+| `fixed` | 各ページのヒーローに mt-[ヘッダー高さ] が必要 | 非推奨 |
+
+```tsx
+// ✅ sticky（推奨）
+<header className="sticky top-0 w-full bg-white/95 backdrop-blur-sm z-50">
+```
+
+### 7-2. scrollToSection（ページ内スクロール）
+
+```tsx
+const scrollToSection = (id: string) => {
+  setIsOpen(false);
+  const element = document.getElementById(id);
+  if (element) {
+    const headerOffset = 80;
+    const elementPosition = element.getBoundingClientRect().top;
+    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+    window.scrollTo({ top: offsetPosition, behavior: "smooth" });
+  }
+};
+```
+
+### 7-3. スクロール検知によるヘッダー背景切り替え
+
+```tsx
+const [scrolled, setScrolled] = useState(false);
+
+useEffect(() => {
+  const handleScroll = () => setScrolled(window.scrollY > 20);
+  window.addEventListener("scroll", handleScroll);
+  return () => window.removeEventListener("scroll", handleScroll);
+}, []);
+
+<header className={`fixed w-full z-50 transition-all duration-500 ${
+  scrolled ? "bg-white/95 text-gray-900 py-4" : "bg-transparent text-white py-6"
+}`}>
+```
+
+### 7-4. フルスクリーンモバイルメニュー
+
+```tsx
+{isMenuOpen && (
+  <>
+    <div
+      className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+      onClick={() => setIsMenuOpen(false)}
+    />
+    <div className="fixed inset-0 bg-white z-50 lg:hidden overflow-y-auto">
+      <div className="flex justify-between items-center px-6 py-4 border-b">
+        <Image src="/logo.png" alt="ロゴ" width={48} height={48} />
+        <button onClick={() => setIsMenuOpen(false)} aria-label="メニューを閉じる">
+          <X size={24} />
+        </button>
+      </div>
+      <nav className="px-8 py-12 flex flex-col gap-6">
+        {navItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => handleNavClick(item.id)}
+            className="text-left text-[18px] font-bold py-3 border-b border-gray-100"
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  </>
+)}
+```
+
+---
+
+## 8. vercel.json リダイレクト
+
+### naked → www
+
+```json
+{
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "example.com" }],
+      "destination": "https://www.example.com/:path*",
+      "permanent": true
+    }
+  ]
+}
+```
+
+layout.tsx の `metadata.alternates.canonical` も合わせて設定する。
+
+---
+
+## 9. Button 共通コンポーネント設計
+
+### variant / size 対応
+
+```tsx
+type ButtonVariant = "default" | "conversion" | "line";
+type ButtonSize = "default" | "header";
+
+const variantStyles: Record<ButtonVariant, string> = {
+  default: "bg-[var(--btn-primary)] text-white",
+  conversion: "bg-[var(--accent)] text-white",
+  line: "bg-[#06C755] text-white",
+};
+
+const sizeStyles: Record<ButtonSize, string> = {
+  default: "h-12 px-6 min-w-[140px] text-[13px] md:text-[20px]",
+  header: "h-10 px-4 py-2 md:px-5 md:py-3 text-[13px] md:text-[20px]",
+};
+```
+
+### LINE アイコン（react-icons 不要のインライン SVG）
+
+```tsx
+const LineIcon = ({ size = 20, className }: { size?: number; className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden>
+    <path fill="currentColor" d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .349-.281.63-.63.63h-2.386c-.345 0-.627-.281-.627-.63V8.108c0-.345.282-.63.63-.63h2.386c.346 0 .627.285.627.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.627-.631.627-.346 0-.626-.283-.626-.628V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.627-.631.627-.345 0-.627-.283-.627-.627V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.627H4.917c-.345 0-.63-.283-.63-.627V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.627-.629.627M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314" />
+  </svg>
+);
+```

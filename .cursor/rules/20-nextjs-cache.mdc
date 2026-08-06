@@ -1,0 +1,49 @@
+---
+description: "Next.js Turbopack キャッシュエラー（ENOENT）の検知と対処ルール"
+alwaysApply: true
+---
+
+# Next.js キャッシュ・ビルドエラー対処
+
+## 1. Turbopack ENOENT エラーの自動対処
+
+ターミナル出力に以下のパターンを検知した場合、AIは即座に対処する。
+
+```
+ENOENT: no such file or directory, open '.next/static/development/_buildManifest.js.tmp...'
+```
+
+### 対処手順（上から順に実行）
+
+1. **開発サーバーの停止** → ターミナルで `Ctrl+C`
+2. **キャッシュ削除** → `rm -rf .next`
+3. **開発サーバーの再起動** → `npm run dev`（または `pnpm dev` / `yarn dev`）
+
+### 根本対策: package.json の dev スクリプト修正
+
+新規プロジェクトまたは初回セットアップ時に、`package.json` の `scripts.dev` を以下に変更する。
+
+```json
+{
+  "scripts": {
+    "dev": "rm -rf .next && next dev --turbopack"
+  }
+}
+```
+
+これにより開発サーバー起動時に毎回キャッシュがクリアされ、ENOENT エラーを未然に防止する。
+
+## 2. 外部画像の取り扱い
+
+- `<Image />` コンポーネントで `https://images.unsplash.com/...` 等の外部URLを `src` に直接指定しない
+- 外部画像は `/public/images/` 以下にダウンロードし、ローカルパスで読み込む
+- 既存コードに外部URLが残っている場合は `/unsplash` スキルで一括変換を提案する
+
+## 3. パスエラー（404）の確認手順
+
+画像の404が発生した場合、以下を確認する。
+
+1. ファイルが `public/` 以下に物理的に存在するか
+2. パスが `/` から始まっているか（`public/` は含めない）
+3. ファイル名の大文字・小文字が一致しているか
+4. 拡張子が正しいか（`.jpg` / `.webp` / `.png`）

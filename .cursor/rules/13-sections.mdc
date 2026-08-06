@@ -1,0 +1,41 @@
+---
+description: "セクション構造 — 背景色・順序・余白・id属性"
+globs:
+  - "app/**/*.tsx"
+  - "components/**/*.tsx"
+alwaysApply: true
+---
+
+# セクション構造
+
+> ⚠ legacy補助ルール: 矛盾時は `01-rule-priority-v3.mdc` と `05-v3-core.mdc` を優先する。
+
+## 基本ルール
+
+- ラッパーは `<section>`（`<div>` ではなく）
+- 全 section に `id` 属性必須（ナビ・GTM用）
+- コンテンツは配列で管理（ハードコードしない）
+
+## 背景色は交互に
+
+```tsx
+// ✅ 白 → グレー → 白 → グレー
+<section className="bg-white py-[50px] md:py-[100px]">
+<section className="bg-gray-50 py-[50px] md:py-[100px]">
+<section className="bg-white py-[50px] md:py-[100px]">
+// ❌ 白 → 白（のっぺりして見える）
+```
+
+## セクション順序
+
+```
+Hero → 悩み/課題 → 解決/サービス → 強み/選ばれる理由 → 実績/お客様の声 → 会社概要 → FAQ → CTA/Contact
+```
+
+## 余白（固定値）
+
+| 対象 | SP | PC |
+|------|----|----|
+| セクション上下 | `py-[50px]` | `md:py-[100px]` |
+| h2 下 | `mb-5` | `md:mb-[40px]` |
+| カード間 | `gap-10` | `md:gap-12` |

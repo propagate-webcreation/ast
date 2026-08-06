@@ -1,0 +1,593 @@
+# Design Recommend Workflow
+# Version: 1.0.0
+# Last Updated: 2025-01-15
+
+metadata:
+  version: "1.0.0"
+  description: "デザインストックからリファレンスコンポーネントを選定し、ターゲットに統合するワークフロー"
+  enforcement: MANDATORY
+  commands:
+    - "/design-recommend"
+
+# =============================================================================
+# WORKFLOW OVERVIEW
+# =============================================================================
+# 
+# Purpose: ユーザーのターゲットコンポーネントに最適なデザインリファレンスを選定し、
+#          プロジェクトのビジュアルスタイルを維持しながら統合する
+#
+# Flow:
+#   Step 1: インデックスファイルの取得
+#   Step 2: ターゲットコンポーネントの分析
+#   Step 3: 候補の絞り込み（5-6件）
+#   Step 4: ユーザーとの対話による最終選定（2件→1件）
+#   Step 5: リファレンスコンポーネントの取得
+#   Step 6: 統合実装
+#
+# =============================================================================
+
+workflow:
+  trigger_command: "/design-recommend"
+  
+  # ---------------------------------------------------------------------------
+  # Step 0: コマンド解析
+  # ---------------------------------------------------------------------------
+  step_0:
+    name: "コマンド解析"
+    status: MANDATORY
+    skip_allowed: false
+    description: |
+      ユーザーの入力からターゲットコンポーネントを特定する
+    
+    input_format: "/design-recommend [target-component]"
+    
+    examples:
+      - "/design-recommend HomeHero"
+      - "/design-recommend app/components/home/HomeFeatures.tsx"
+      - "/design-recommend AboutMission"
+      - "/design-recommend ContactForm"
+    
+    actions:
+      - action: "parse_target"
+        description: |
+          1. ターゲットコンポーネント名またはパスを抽出
+          2. ファイルパスの場合はコンポーネント名に変換
+          3. 存在確認（app/components/配下を検索）
+    
+    validation:
+      - "ターゲットが指定されていない場合はエラー"
+      - "存在しないコンポーネントの場合は候補を提示"
+
+  # ---------------------------------------------------------------------------
+  # Step 1: インデックスファイルの取得
+  # ---------------------------------------------------------------------------
+  step_1:
+    name: "インデックスファイル取得"
+    status: MANDATORY
+    skip_allowed: false
+    description: |
+      デザインストックのインデックスファイルをダウンロードする
+    
+    command: |
+      curl -o scripts/_index.json "https://gist.githubusercontent.com/propagate1/5567ced2819730057503417bd35ee7cc/raw/_index.json"
+    
+    required_permissions:
+      - network
+    
+    output_file: "scripts/_index.json"
+    
+    index_structure:
+      version: "string"
+      updatedAt: "ISO8601 datetime"
+      components:
+        - id: "string (lowercase, e.g., about3000)"
+          name: "string (PascalCase, e.g., About3000)"
+          category: "string (About, Hero, Feature, CTA, etc.)"
+          fileName: "string (e.g., About3000.tsx)"
+          tags:
+            main: ["string"]  # セクションタイプ
+            style: ["string"]  # やさしい・ナチュラル, 上品・高級感, カッコいい, シンプル, 和風
+            industry: ["string"]  # 業種
+            pageType: ["string"]  # CP, LP
+            plan: ["string"]  # BASIC, STANDARD/ADVANCE
+          designAnalysis:  # 一部のコンポーネントのみ
+            visualSummary: "string"
+            colorMood:
+              palette: "string"
+              feeling: "string"
+            typography:
+              style: "string"
+              hierarchy: "string"
+              personality: "string"
+            layout:
+              pattern: "string"
+              spacing: "string"
+              density: "string"
+            integrationGuidelines:
+              pairsWith: ["string"]
+              avoidWith: ["string"]
+              keyElements: "string"
+            distinctiveFeatures: ["string"]
+    
+    actions:
+      - action: "download_index"
+        tool: "run_terminal_cmd"
+        required_permissions: ["network"]
+      - action: "read_index"
+        tool: "read_file"
+        target: "scripts/_index.json"
+
+  # ---------------------------------------------------------------------------
+  # Step 2: ターゲットコンポーネントの分析
+  # ---------------------------------------------------------------------------
+  step_2:
+    name: "ターゲット分析"
+    status: MANDATORY
+    skip_allowed: false
+    description: |
+      ターゲットコンポーネントの現在の状態を詳細に分析する
+    
+    actions:
+      - action: "read_target_component"
+        description: "ターゲットコンポーネントのソースコードを読み込む"
+      
+      - action: "analyze_structure"
+        description: |
+          以下を分析:
+          - セクションタイプ（Hero, About, Feature, CTA, etc.）
+          - 現在のレイアウトパターン（grid, flex, etc.）
+          - コンテンツ構成（見出し、本文、画像、ボタン等）
+          - 使用している色・スタイル
+          - レスポンシブ対応状況
+      
+      - action: "read_related_components"
+        description: |
+          同じページの他のセクションを読み込み、
+          プロジェクト全体のビジュアルスタイルを把握する
+      
+      - action: "identify_category"
+        description: |
+          インデックスのcategoryと照合:
+          - About, Access, Anchor, Blog, Company, Contact, CTA
+          - FAQ, Feature, Footer, Gallery, Header, Hero
+          - History, Interview, Media, Menu, News, Price
+          - Problem, Profile, Recruit, Service, Staff, Step
+          - Testimonial, Works
+    
+    output:
+      target_analysis:
+        component_name: "string"
+        file_path: "string"
+        section_type: "string"
+        current_layout: "string"
+        content_elements: ["string"]
+        style_characteristics: "string"
+        project_visual_style: "string"
+
+  # ---------------------------------------------------------------------------
+  # Step 3: 候補の絞り込み（5-6件）
+  # ---------------------------------------------------------------------------
+  step_3:
+    name: "候補絞り込み"
+    status: MANDATORY
+    skip_allowed: false
+    description: |
+      インデックスから最適な候補を5-6件選出する
+    
+    selection_criteria:
+      primary:
+        - "categoryがターゲットのセクションタイプと一致"
+        - "tags.styleがプロジェクトのビジュアルスタイルと親和性がある"
+      
+      secondary:
+        - "tags.industryが関連している"
+        - "designAnalysis.integrationGuidelines.pairsWithが適合"
+        - "designAnalysis.layout.patternがターゲットの改善に有効"
+      
+      exclusion:
+        - "designAnalysis.integrationGuidelines.avoidWithに該当"
+        - "現在のプロジェクトスタイルと明らかに不一致"
+    
+    actions:
+      - action: "filter_by_category"
+        description: "categoryでフィルタリング"
+      
+      - action: "score_candidates"
+        description: |
+          各候補をスコアリング:
+          - スタイル親和性: 0-3点
+          - 業種関連性: 0-2点
+          - レイアウト改善効果: 0-3点
+          - designAnalysis有無: +1点（詳細情報あり）
+      
+      - action: "select_top_candidates"
+        description: "上位5-6件を選出"
+    
+    output:
+      candidates:
+        - name: "string"
+          id: "string"
+          score: "number"
+          match_reasons: ["string"]
+          style_tags: ["string"]
+          has_design_analysis: "boolean"
+
+  # ---------------------------------------------------------------------------
+  # Step 4: ユーザーとの対話による最終選定
+  # ---------------------------------------------------------------------------
+  step_4:
+    name: "対話による最終選定"
+    status: MANDATORY
+    skip_allowed: false
+    description: |
+      ユーザーとの対話を通じて最終的な1件を選定する
+    
+    phase_1:
+      name: "2件への絞り込み"
+      actions:
+        - action: "present_top_2"
+          description: |
+            候補から上位2件を提示し、それぞれの特徴を説明:
+            - レイアウトパターン
+            - ビジュアルスタイル
+            - ターゲットへの適用イメージ
+        
+        - action: "propose_preview"
+          description: |
+            各候補をターゲットに適用した場合のプレビューをAIが提案する:
+            - テキストで「どのように見えるか」を具体的に説明する
+            - レイアウト・配置・余白の変化をイメージしやすい形で提示する
+            - 例: 「候補1を適用した場合: 見出しが左側、画像が右側の2カラムになり、
+              モバイルでは縦積み。余白は現状よりやや広めになります」
+            - ターゲットの既存コンテンツ（見出し・本文・画像）がどう配置されるかを示す
+        
+        - action: "fetch_preview_and_share_url"
+          description: |
+            上位2件の候補をプレビュー用に取得し、URLを案内する:
+            - コマンド実行: npm run preview:fetch -- {id1} {id2} （-- の後にIDを渡す）
+            - 開発サーバー起動中であれば、以下のURLで実際のプレビューを確認できる旨を伝える:
+              - /preview/{id1}
+              - /preview/{id2}
+            - 例: 「実際のプレビューを確認: http://localhost:3000/preview/about3000 および /preview/about5001」
+        
+        - action: "ask_clarification"
+          description: |
+            以下のような質問でユーザーの意図を明確化:
+            - 「よりシンプルなレイアウトと、情報量の多いレイアウト、どちらが好みですか？」
+            - 「画像を大きく見せたいですか、テキストを重視しますか？」
+            - 「現在のスタイルを維持しつつ改善したいですか、それとも大きく変えたいですか？」
+    
+    phase_2:
+      name: "最終1件の決定"
+      actions:
+        - action: "confirm_selection"
+          description: |
+            ユーザーの回答に基づいて最終候補を提示し、確認を得る
+    
+    output:
+      selected_component:
+        name: "string"
+        id: "string"
+        reason: "string"
+
+  # ---------------------------------------------------------------------------
+  # Step 5: リファレンスコンポーネントの取得
+  # ---------------------------------------------------------------------------
+  step_5:
+    name: "リファレンス取得"
+    status: MANDATORY
+    skip_allowed: false
+    description: |
+      選定したリファレンスコンポーネントをshadcnコマンドで取得する
+    
+    command_template: |
+      npx shadcn@latest add "https://gist.githubusercontent.com/propagate1/5567ced2819730057503417bd35ee7cc/raw/{id}.json"
+    
+    # 🚨 CRITICAL: コンポーネント名は小文字（id）を使用する
+    # - インデックスの "id" フィールド（小文字）を使用: about3000, feature100
+    # - "name" フィールド（PascalCase）は使用しない: About3000, Feature100
+    naming_rule: |
+      ファイル名は小文字のidを使用する:
+      - ✅ 正しい: about3000.json, feature100.json, hero5001.json
+      - ❌ 間違い: About3000.json, Feature100.json, Hero5001.json
+    
+    example:
+      - "npx shadcn@latest add \"https://gist.githubusercontent.com/propagate1/5567ced2819730057503417bd35ee7cc/raw/about3000.json\""
+      - "npx shadcn@latest add \"https://gist.githubusercontent.com/propagate1/5567ced2819730057503417bd35ee7cc/raw/feature100.json\""
+      - "npx shadcn@latest add \"https://gist.githubusercontent.com/propagate1/5567ced2819730057503417bd35ee7cc/raw/hero5001.json\""
+    
+    required_permissions:
+      - network
+    
+    actions:
+      - action: "execute_shadcn_add"
+        tool: "run_terminal_cmd"
+        required_permissions: ["network"]
+      
+      - action: "locate_downloaded_file"
+        description: |
+          ダウンロードされたファイルの場所を特定
+          通常: components/ui/ または components/ 配下
+      
+      - action: "read_reference_component"
+        description: "リファレンスコンポーネントのソースコードを読み込む"
+    
+    output:
+      reference_file_path: "string"
+      reference_code: "string"
+
+  # ---------------------------------------------------------------------------
+  # Step 6: 統合実装
+  # ---------------------------------------------------------------------------
+  step_6:
+    name: "統合実装"
+    status: MANDATORY
+    skip_allowed: false
+    description: |
+      リファレンスデザインをターゲットコンポーネントに統合する
+      
+      🚨 CRITICAL: 統合実装時は必ずルールを参照すること。
+      - **必ず `.cursor/rules/24-design-apply-stock.mdc` を読み、その内容に従って適用する**
+      - 保持（Preserve）・採用（Adopt）・適応（Adapt）・禁止事項は 24-design-apply-stock.mdc に一元化されている
+    
+    apply_rule: ".cursor/rules/24-design-apply-stock.mdc"
+    
+    actions:
+      - action: "extract_layout_pattern"
+        description: |
+          リファレンスから抽出:
+          - グリッド/フレックス構造
+          - カラム数・比率
+          - 要素の配置パターン
+          - 余白の比率
+      
+      - action: "map_content"
+        description: |
+          ターゲットのコンテンツをリファレンスの構造にマッピング:
+          - 見出し → 見出し位置
+          - 本文 → 本文位置
+          - 画像 → 画像位置
+          - CTA → CTA位置
+      
+      - action: "apply_project_styles"
+        description: |
+          プロジェクトのスタイルを適用:
+          - カラー変数（var(--xxx)）
+          - フォントスケール（ワークスペースルール）
+          - ボタンスタイル（共通コンポーネント）
+          - 余白（md:my-[100px]等）
+      
+      - action: "implement_changes"
+        tool: "search_replace"
+        description: |
+          ターゲットコンポーネントを段階的に修正
+          - 大きな構造変更は複数のsearch_replaceで実施
+          - 各変更後にコードの整合性を確認
+      
+      - action: "verify_integration"
+        description: |
+          統合後の確認:
+          - レスポンシブ対応（モバイル/PC）
+          - ワークスペースルール準拠
+          - 既存コンテンツの保持
+          - ビジュアルスタイルの一貫性
+    
+    # 禁止事項は .cursor/rules/24-design-apply-stock.mdc の「禁止事項」に従う
+
+# =============================================================================
+# CATEGORY MAPPING
+# =============================================================================
+
+category_mapping:
+  Hero:
+    keywords: ["hero", "メインビジュアル", "ファーストビュー", "mv"]
+    typical_components: ["HomeHero", "PageHeader"]
+  
+  About:
+    keywords: ["about", "私たちについて", "会社概要", "mission", "vision"]
+    typical_components: ["AboutMission", "CompanyMission"]
+  
+  Feature:
+    keywords: ["feature", "特徴", "強み", "サービス", "service"]
+    typical_components: ["HomeFeatures", "WorksServices"]
+  
+  CTA:
+    keywords: ["cta", "お問い合わせ", "contact", "相談"]
+    typical_components: ["CTA"]
+  
+  Works:
+    keywords: ["works", "実績", "事例", "gallery", "portfolio"]
+    typical_components: ["HomeWorks", "WorksGallery"]
+  
+  Contact:
+    keywords: ["contact", "form", "フォーム", "お問い合わせ"]
+    typical_components: ["ContactForm"]
+  
+  Company:
+    keywords: ["company", "会社", "企業情報", "profile"]
+    typical_components: ["CompanyProfile"]
+  
+  Staff:
+    keywords: ["staff", "スタッフ", "チーム", "メンバー", "greeting"]
+    typical_components: ["HomeGreeting"]
+  
+  News:
+    keywords: ["news", "お知らせ", "ニュース", "media"]
+    typical_components: ["MediaContent"]
+  
+  Access:
+    keywords: ["access", "アクセス", "地図", "map"]
+    typical_components: []
+  
+  FAQ:
+    keywords: ["faq", "よくある質問", "q&a"]
+    typical_components: []
+  
+  Price:
+    keywords: ["price", "料金", "プラン", "pricing"]
+    typical_components: []
+  
+  Testimonial:
+    keywords: ["testimonial", "お客様の声", "レビュー", "review"]
+    typical_components: []
+  
+  Step:
+    keywords: ["step", "流れ", "ステップ", "process"]
+    typical_components: []
+
+# =============================================================================
+# STYLE MAPPING
+# =============================================================================
+
+style_mapping:
+  "やさしい・ナチュラル":
+    characteristics:
+      - "柔らかい色調"
+      - "丸みのある要素"
+      - "余白を活かしたレイアウト"
+    compatible_with:
+      - "福祉・介護"
+      - "教育"
+      - "ヘルスケア"
+  
+  "上品・高級感":
+    characteristics:
+      - "落ち着いた配色"
+      - "洗練されたタイポグラフィ"
+      - "ミニマルなデザイン"
+    compatible_with:
+      - "ホテル・旅館"
+      - "飲食店"
+      - "不動産"
+  
+  "カッコいい":
+    characteristics:
+      - "コントラストの強い配色"
+      - "ダイナミックなレイアウト"
+      - "モダンな印象"
+    compatible_with:
+      - "IT・テクノロジー"
+      - "製造業"
+      - "スポーツ"
+  
+  "シンプル":
+    characteristics:
+      - "最小限の装飾"
+      - "クリーンなレイアウト"
+      - "読みやすさ重視"
+    compatible_with:
+      - "全業種"
+  
+  "和風":
+    characteristics:
+      - "日本的な色使い"
+      - "縦書き要素"
+      - "伝統的なモチーフ"
+    compatible_with:
+      - "旅館"
+      - "和食"
+      - "伝統工芸"
+
+# =============================================================================
+# TROUBLESHOOTING
+# =============================================================================
+
+troubleshooting:
+  issue_1:
+    problem: "インデックスファイルのダウンロードに失敗"
+    cause: "ネットワーク接続またはURL問題"
+    solution:
+      - "required_permissions: ['network'] を確認"
+      - "URLが正しいか確認"
+      - "再試行"
+  
+  issue_2:
+    problem: "shadcnコマンドでコンポーネント取得に失敗"
+    cause: "コンポーネント名の不一致またはネットワーク問題"
+    solution:
+      - "インデックスのnameフィールドを正確に使用"
+      - "大文字小文字を確認（PascalCase）"
+      - "ネットワーク接続を確認"
+  
+  issue_3:
+    problem: "統合後にスタイルが崩れる"
+    cause: "プロジェクトスタイルとの不整合"
+    solution:
+      - "ワークスペースルールを再確認"
+      - "カラー変数を使用しているか確認"
+      - "フォントスケールを確認"
+      - "他のセクションとの一貫性を確認"
+  
+  issue_4:
+    problem: "コンテンツが消えた"
+    cause: "統合時にターゲットのコンテンツを上書き"
+    solution:
+      - "Step 6のpreserve項目を再確認"
+      - "search_replaceで段階的に変更"
+      - "コンテンツマッピングを慎重に実施"
+
+# =============================================================================
+# OUTPUT TEMPLATES
+# =============================================================================
+
+output_templates:
+  candidate_presentation: |
+    ## 🎨 デザイン候補
+    
+    ターゲット: **{target_name}** ({section_type})
+    
+    以下の候補が見つかりました：
+    
+    | # | 名前 | スタイル | マッチ理由 |
+    |---|------|---------|-----------|
+    | 1 | {name1} | {style1} | {reason1} |
+    | 2 | {name2} | {style2} | {reason2} |
+    | ... | ... | ... | ... |
+    
+    ### 上位2件の詳細
+    
+    **1. {top1_name}**
+    - レイアウト: {layout1}
+    - 特徴: {features1}
+    - 適用イメージ: {image1}
+    
+    **2. {top2_name}**
+    - レイアウト: {layout2}
+    - 特徴: {features2}
+    - 適用イメージ: {image2}
+    
+    ### プレビュー提案（適用時のイメージ）
+    **候補1を適用した場合:** {preview_proposal_1}
+    **候補2を適用した場合:** {preview_proposal_2}
+    
+    ### 質問
+    {clarification_question}
+  
+  final_selection: |
+    ## ✅ 選定完了
+    
+    **選定コンポーネント:** {selected_name}
+    **選定理由:** {reason}
+    
+    これからリファレンスを取得し、統合を開始します。
+  
+  integration_complete: |
+    ## 🎉 統合完了
+    
+    **ターゲット:** {target_name}
+    **リファレンス:** {reference_name}
+    
+    ### 適用した変更
+    - {change1}
+    - {change2}
+    - ...
+    
+    ### 保持した要素
+    - {preserved1}
+    - {preserved2}
+    - ...
+    
+    ### 確認事項
+    - [ ] モバイル表示の確認
+    - [ ] PC表示の確認
+    - [ ] 他セクションとの一貫性確認

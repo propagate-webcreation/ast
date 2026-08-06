@@ -1,0 +1,15 @@
+{
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "example.jp"
+        }
+      ],
+      "destination": "https://www.example.jp/:path*",
+      "permanent": true
+    }
+  ]
+}

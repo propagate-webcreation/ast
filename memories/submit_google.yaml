@@ -1,0 +1,1299 @@
+# =============================================================================
+# Google提出 自動化ワークフロー（v2.5.0）
+# =============================================================================
+# 目的: Google Search Console への提出に必要な設定を自動化
+#
+# 対象: Next.js + Tailwind CSS プロジェクト（DefaultSetting クローン）
+# 作成日: 2025-11-04
+# 最終更新: 2026-01-08
+# =============================================================================
+
+schema_version: "2.5.1"
+
+metadata:
+  workflow_name: "Google提出 自動化"
+  target_framework: "Next.js 13+ (App Router)"
+  enforcement: "MANDATORY"
+  version: "2.5.1"
+  created: "2025-11-04"
+  updated: "2026-01-08"
+  author: "DefaultSetting Project"
+  description: |
+    Google提出に必要な6つのタスクを完全自動化：
+    0. 所有権確認ファイル作成（DNS設定不要・顧客ドメイン対応）
+    1. altタグ設定（MANDATORY品質チェック + 7つの冗長パターン検出&自動改善）
+    2. metadata 設定（市場分析 + SEO最適化）
+    3. sitemap.ts 作成（CRITICAL外部URL混入防止 + リダイレクトページ除外）
+    4. robots.txt 作成（重要設定）
+    5. URLスラッグ最適化（サイト内容分析）
+    
+    v2.5.0: 所有権確認ファイル作成機能追加（DNS設定不要で顧客ドメインに対応）
+    v2.4.0: URL Prefix オプション追加（特定パス配下のみを対象にする機能）
+    v2.3.0: リダイレクトページ除外機能追加（重複コンテンツ防止）
+
+# =============================================================================
+# トリガー設定
+# =============================================================================
+triggers:
+  main_keywords:
+    - "Google提出"
+  
+  action_keywords:
+    - "して"
+    - "お願い"
+    - "作成して"
+    - "セットアップして"
+    - "設定して"
+  
+  exclude_keywords:
+    - "必要ですか"
+    - "方法"
+    - "教えて"
+    - "説明"
+    - "?"
+    - "？"
+
+# =============================================================================
+# URL Prefix オプション（v2.4.0 新機能）
+# =============================================================================
+url_prefix_option:
+  
+  name: "URL Prefix プロパティ対応"
+  
+  description: |
+    Google Search Console の「URL プレフィックス プロパティ」を使用する場合、
+    特定のパス配下のみを対象にしてワークフローを実行できます。
+    
+    使用例:
+    - /google-submit --prefix /blog
+    - /google-submit prefix=/services
+    
+    指定がない場合は、従来通りサイト全体を対象にします。
+  
+  detection:
+    patterns:
+      - "--prefix"
+      - "prefix="
+    
+    extraction: |
+      ユーザーの入力から prefix パスを抽出:
+      1. "--prefix /blog" → "/blog"
+      2. "prefix=/services" → "/services"
+      3. 指定なし → null（サイト全体）
+    
+    validation:
+      - "パスは / で始まる必要がある"
+      - "パスに外部URLを含めない"
+      - "パスは app/ 配下に存在するディレクトリである必要がある"
+  
+  behavior:
+    when_prefix_specified:
+      workflow_1_alt_tags:
+        scope: "指定されたパス配下のコンポーネントのみ対象"
+        example: "--prefix /blog → app/blog/ と app/components/blog/ のみ"
+      
+      workflow_2_metadata:
+        scope: "指定されたパス用の layout.tsx を更新（存在する場合）"
+        fallback: "パス専用の layout.tsx がない場合は app/layout.tsx を更新"
+        example: "--prefix /blog → app/blog/layout.tsx を優先"
+      
+      workflow_3_sitemap:
+        scope: "指定されたパス配下の page.tsx のみを sitemap に含める"
+        example: "--prefix /blog → /blog/, /blog/post-1/, /blog/post-2/ のみ"
+        critical_rule: |
+          🚨 CRITICAL: prefix が指定された場合、そのパス配下のみを検出
+          - app/{prefix}/**/page.tsx のみを対象
+          - 他のパスは除外
+      
+      workflow_4_robots:
+        scope: "Sitemap URL は変更なし（サイト全体の sitemap.xml を参照）"
+        note: "robots.txt はサイト全体に適用されるため、prefix の影響を受けない"
+      
+      workflow_5_url_slug:
+        scope: "指定されたパス配下のディレクトリのみ対象"
+        example: "--prefix /blog → app/blog/ 配下の日本語ディレクトリのみ"
+    
+    when_prefix_not_specified:
+      behavior: "従来通りサイト全体を対象"
+      note: "デフォルト動作（後方互換性を維持）"
+  
+  output_format:
+    with_prefix: |
+      📍 URL Prefix モード: {prefix} 配下のみを対象にします
+      
+      [1/5] altタグを設定します...
+        → {prefix} 配下のコンポーネントのみ対象
+        ✅ 画像に alt 属性を設定しました
+      
+      [2/5] metadata を設定します...
+        → {prefix} 用の metadata を設定
+        ✅ app{prefix}/layout.tsx に metadata を設定しました
+      
+      [3/5] sitemap.ts を作成します...
+        → {prefix} 配下の page.tsx のみ検出
+        → 対象: {detected_pages}
+        ✅ app/sitemap.ts を作成しました（{prefix} 配下のみ）
+      
+      [4/5] robots.txt を作成します...
+        ✅ public/robots.txt を作成しました
+      
+      [5/5] URLスラッグを最適化します...
+        → {prefix} 配下のディレクトリのみ対象
+        ✅ URLスラッグを最適化しました
+      
+      🎉 Google提出の準備が完了しました！（URL Prefix: {prefix}）
+    
+    without_prefix: |
+      [1/5] altタグを設定します...
+        ✅ 画像に alt 属性を設定しました
+      
+      [2/5] metadata を設定します...
+        ✅ app/layout.tsx に metadata を設定しました
+      
+      [3/5] sitemap.ts を作成します...
+        ✅ app/sitemap.ts を作成しました
+      
+      [4/5] robots.txt を作成します...
+        ✅ public/robots.txt を作成しました
+      
+      [5/5] URLスラッグを最適化します...
+        ✅ URLスラッグを最適化しました
+      
+      🎉 Google提出の準備が完了しました！
+  
+  examples:
+    example_1:
+      command: "/google-submit --prefix /blog"
+      result: |
+        - alt タグ: app/blog/ と app/components/blog/ のみ
+        - metadata: app/blog/layout.tsx を更新
+        - sitemap: /blog/, /blog/post-1/, /blog/post-2/ のみ含める
+        - robots: 変更なし
+        - URL slug: app/blog/ 配下のみ
+    
+    example_2:
+      command: "/google-submit prefix=/services"
+      result: |
+        - alt タグ: app/services/ と app/components/services/ のみ
+        - metadata: app/services/layout.tsx を更新（なければ app/layout.tsx）
+        - sitemap: /services/, /services/web/, /services/app/ のみ含める
+        - robots: 変更なし
+        - URL slug: app/services/ 配下のみ
+    
+    example_3:
+      command: "/google-submit"
+      result: |
+        - 従来通りサイト全体を対象
+        - 後方互換性を維持
+
+# =============================================================================
+# ワークフロー0: 登録方式の選択（v2.5.0 新機能）
+# =============================================================================
+workflow_0_registration_method:
+  
+  name: "Google Search Console 登録方式を選択"
+  
+  description: |
+    Google Search Console への登録方式を選択する。
+    ドメインプロパティ（DNS方式）と URL プレフィックス（HTML ファイル方式）の2つから選択可能。
+  
+  initial_prompt: |
+    🔍 Google Search Console への登録方式を選択してください:
+    
+    ┌─────────────────────────────────────────────────────────────────┐
+    │ 【A】ドメインプロパティ（DNS方式）                              │
+    │     - サイト全体を1つのプロパティとして登録                     │
+    │     - DNS レコード（TXT）の追加が必要                           │
+    │     - ⚠️ 顧客ドメインの場合、顧客側での DNS 設定が必要          │
+    │     - 例: example.com（www有無、http/https すべて含む）         │
+    ├─────────────────────────────────────────────────────────────────┤
+    │ 【B】URL プレフィックス（HTML ファイル方式）✅ 推奨             │
+    │     - 特定の URL プレフィックスを登録                           │
+    │     - DNS 設定不要、デプロイするだけで完結                      │
+    │     - 顧客ドメインでも自分側だけで対応可能                      │
+    │     - 例: https://www.example.com（このURL配下すべて）          │
+    └─────────────────────────────────────────────────────────────────┘
+    
+    どちらの方式で登録しますか？（A または B を入力）
+  
+  options:
+    option_A:
+      name: "ドメインプロパティ（DNS方式）"
+      keyword_triggers:
+        - "A"
+        - "a"
+        - "ドメイン"
+        - "DNS"
+        - "domain"
+      
+      description: |
+        Google Search Console の「ドメインプロパティ」として登録。
+        DNS レコード（TXT）を追加して所有権を確認する従来の方式。
+      
+      requirements:
+        - "DNS 管理画面へのアクセス権限"
+        - "顧客ドメインの場合は顧客側での作業が必要"
+      
+      process:
+        step_1:
+          action: "DNS TXT レコードの案内"
+          output: |
+            📋 ドメインプロパティ（DNS方式）で登録します
+            
+            【手順】
+            1. Google Search Console (https://search.google.com/search-console) にアクセス
+            2. 「プロパティを追加」→「ドメイン」を選択
+            3. ドメイン名を入力（例: example.com）
+            4. 表示される TXT レコードをコピー
+            5. DNS 管理画面で TXT レコードを追加
+            6. Google Search Console で「確認」をクリック
+            
+            ⚠️ 注意:
+            - DNS の反映には最大48時間かかる場合があります
+            - 顧客ドメインの場合は、顧客に TXT レコードの追加を依頼してください
+            
+            DNS 設定が完了したら「完了」と入力してください。
+            （所有権確認をスキップして次に進む場合は「スキップ」と入力）
+    
+    option_B:
+      name: "URL プレフィックス（HTML ファイル方式）"
+      keyword_triggers:
+        - "B"
+        - "b"
+        - "URL"
+        - "プレフィックス"
+        - "prefix"
+        - "HTML"
+      
+      description: |
+        Google Search Console の「URL プレフィックス」として登録。
+        Google からダウンロードした HTML ファイルを public/ に保存して所有権を確認する方式。
+        DNS 設定不要で、デプロイするだけで完結。
+      
+      benefits:
+        - "顧客の DNS 設定変更が不要"
+        - "デプロイするだけで完結"
+        - "即座に所有権確認が可能"
+        - "技術的な知識がない顧客でも対応可能"
+      
+      process:
+        step_1:
+          action: "ユーザーに HTML ファイルのダウンロードと保存を案内"
+          prompt: |
+            📋 URL プレフィックス（HTML ファイル方式）で登録します
+            
+            【手順】
+            1. Google Search Console (https://search.google.com/search-console) にアクセス
+            2. 「プロパティを追加」→「URL プレフィックス」を選択
+            3. サイトの URL を入力（例: https://www.example.com）
+            4. 「確認方法」で「HTML ファイル」を選択
+            5. 表示される HTML ファイルをダウンロード
+            6. ダウンロードしたファイルを public/ フォルダに保存
+            
+            📝 保存したファイル名を入力してください:
+            （例: google1234567890abcdef.html）
+          
+          validation:
+            - "ファイル名が google で始まる"
+            - "ファイル名が .html で終わる"
+            - "ファイル名に不正な文字が含まれていない"
+        
+        step_2:
+          action: "ファイルの存在を確認"
+          method:
+            tool: "read_file"
+            target: "public/{filename}"
+          note: |
+            ユーザーがダウンロードして保存したファイルの存在を確認。
+            ファイルが存在しない場合は、再度保存を促す。
+        
+        step_3:
+          action: "確認手順を案内"
+          output: |
+            ✅ 所有権確認ファイルを確認しました
+            
+            📁 確認したファイル: public/{filename}
+            
+            📋 次のステップ:
+            1. このプロジェクトをデプロイしてください
+            2. デプロイ後、以下の URL にアクセスして確認:
+               https://{domain}/{filename}
+            3. Google Search Console で「確認」ボタンをクリック
+            
+            💡 ヒント:
+            - デプロイ前に確認ボタンを押すとエラーになります
+            - 確認完了後もファイルは削除しないでください（再確認時に必要）
+  
+  skip_option:
+    description: "所有権確認をスキップする場合"
+    
+    when_to_skip:
+      - "すでに所有権確認が完了している場合"
+      - "DNS レコード方式で確認する場合"
+      - "Google Analytics で確認する場合"
+    
+    prompt: |
+      所有権確認ファイルを作成しますか？
+      
+      - 作成する場合: 確認ファイル名を入力
+      - スキップする場合: 「スキップ」と入力
+    
+    skip_keywords:
+      - "スキップ"
+      - "skip"
+      - "不要"
+      - "いらない"
+      - "確認済み"
+  
+  output:
+    template: |
+      ✅ Google Search Console 所有権確認ファイルを確認しました
+      
+      📁 ファイル: public/{filename}
+      🌐 確認URL: https://{domain}/{filename}
+      
+      📋 デプロイ後に Google Search Console で「確認」をクリックしてください
+
+# =============================================================================
+# ワークフロー1: altタグ設定
+# =============================================================================
+workflow_1_alt_tags:
+  
+  name: "画像の alt 属性を自動設定"
+  
+  description: |
+    サイト内のすべての画像（<Image>, <img>, CSS背景画像）を検出し、
+    alt 属性がないものに対して、コンテキストを分析して適切な alt テキストを自動生成・設定する。
+  
+  instructions: |
+    1. app/ と app/components/ 内のすべての .tsx ファイルをサイトを見て確認
+    
+    2. 画像を検出（🚨 重要: multiline モード使用）
+       
+       推奨される検索パターン（シンプルで確実）:
+       - pattern: "Image" （Next.js Image コンポーネント、最も確実）← ユーザー実証済み ✅
+       - pattern: 'src="' （すべてのsrc属性を検出）
+       - pattern: 'src=.*\.(jpg|png|jpeg|svg|webp)' （画像ファイル拡張子で検出）
+       
+       🚨 避けるべきパターン（実際に失敗した例）:
+       - ❌ '<Image|<img' （< が特殊文字、| の使用も不適切、検出失敗）← ユーザー報告
+       - ❌ '<Image' （< のエスケープが必要、複雑で不要）
+       - ❌ "img" のみ（不十分、Image コンポーネントを見逃す可能性）
+       
+       ✅ 最推奨: pattern: "Image" （シンプルで確実、実証済み）
+       
+       ✅ multiline: true を指定（複数行にまたがる Image タグも検出）
+       ✅ 検出したファイルを read_file で読み込んで内容を確認
+    
+    3. 各画像の alt 属性を確認
+       - alt 属性がない → 生成して追加
+       - alt 属性が不適切（"画像", "写真", "test", "sample" など） → 改善して修正
+       
+       生成ルール:
+       - ファイル名、周辺コンテキスト（セクション名、見出し）、className から推測
+       - about.yaml から会社名/サービス名を取得（可能な場合）
+       - 簡潔で具体的な説明（15字以内推奨、20字以内許容）
+       - 「画像」「写真」「イメージ」などの冗長な語は避ける
+    
+    4. 品質チェック
+       - 文字数: 20字以内か
+       - 冗長な語: 含まれていないか
+       - 具体性: 具体的な説明になっているか
+       - 不適切な alt がある場合は自動的に改善
+    
+    5. search_replace で alt 属性を追加または修正
+  
+  generation_examples:
+    新規追加:
+      - '<Image src="/logo.png" /> + <header> 内 → "株式会社〇〇のロゴ"'
+      - '<Image src="/hero-bg.jpg" /> + hero セクション → "〇〇サービスのメインビジュアル"'
+      - '<img src="/office.jpg" /> + <p>東京オフィス</p> の下 → "東京オフィスの外観"'
+    
+    不適切な alt の修正:
+      - '<img src="/test.jpg" alt="画像" /> → alt="テストセクションの説明"'
+      - '<Image src="/hero.jpg" alt="写真" /> → alt="メインビジュアル"'
+      - '<Image src="/sample.png" alt="sample" /> → alt="サービスアイコン"'
+      - '<img src="/logo.png" alt="株式会社メディアプルーフのロゴマークの画像" /> → alt="株式会社メディアプルーフのロゴ"（冗長な語を削除、文字数削減）'
+  
+  important_notes:
+    - CSS背景画像には alt 属性を設定できない（検出のみ行う）
+    - 装飾的な画像はaria-label または説明テキストで対応
+  
+  quality_check_and_fix:
+    status: "MANDATORY"
+    skip_allowed: false
+    enforcement: "CRITICAL"
+    
+    description: |
+      生成した alt テキストが適切か自動検証し、不適切な場合は自動修正する。
+      🚨 このステップは絶対にスキップしてはいけません。
+    
+    mandatory_rules: |
+      - alt 属性が存在するかの確認だけでは不十分
+      - 必ず品質チェックを実行すること
+      - 不適切な alt（"画像", "写真", "test" など）を見逃さない
+      - 品質チェックをスキップした場合は、ワークフロー違反
+    
+    validation_and_fix_rules:
+      - name: "文字数チェック"
+        check: "20字以内か（15字以内推奨）"
+        if_too_long: "冗長な部分を削除して15字以内に改善"
+        example: "株式会社メディアプルーフのロゴマークの画像（22字） → 株式会社メディアプルーフのロゴ（15字）"
+      
+      - name: "冗長な単語のチェック"
+        forbidden_words: ["画像", "写真", "イメージ", "image", "photo", "ピクチャー", "picture"]
+        check: "これらの語が含まれていないか"
+        if_found: "冗長な語を削除して改善"
+        examples:
+          - 'alt="画像" → コンテキストから適切な説明を生成'
+          - 'alt="ロゴの画像" → "ロゴ"'
+          - 'alt="東京オフィスの外観写真" → "東京オフィスの外観"'
+      
+      - name: "冗長な修飾語のチェック"
+        forbidden_patterns: ["〜用の", "〜のための", "〜に関する", "〜についての"]
+        check: "冗長な修飾語が含まれていないか"
+        if_found: "修飾語を削除して簡潔化"
+        examples:
+          - 'alt="サービス紹介用の画像" → "サービス紹介"'
+          - 'alt="お問い合わせのためのアイコン" → "お問い合わせアイコン"'
+      
+      - name: "重複語のチェック"
+        check: "同じ意味の語が重複していないか"
+        examples:
+          - 'alt="メインビジュアルイメージ" → "メインビジュアル"（ビジュアル=イメージで重複）'
+          - 'alt="ロゴマーク" → "ロゴ"（ロゴ=マークで重複）'
+        if_found: "重複を削除"
+      
+      - name: "語尾の冗長性チェック"
+        forbidden_suffixes: ["の画像", "の写真", "のイメージ", "のピクチャー"]
+        check: "これらの語尾が含まれていないか"
+        if_found: "語尾を削除"
+        examples:
+          - 'alt="ロゴの画像" → "ロゴ"'
+          - 'alt="オフィスの写真" → "オフィス"'
+      
+      - name: "具体性チェック"
+        forbidden_generic: ["test", "sample", "temp", "image1", "photo1", "pic"]
+        check: "汎用的な語が含まれていないか"
+        if_found: "コンテキストから具体的な説明を生成"
+        examples:
+          - 'alt="test" → ファイル名とコンテキストから適切な説明を生成'
+          - 'alt="sample" → コンテキストから具体的な説明を生成'
+      
+      - name: "会社名/サービス名の含有（推奨）"
+        check: "可能な場合は会社名またはサービス名が含まれているか"
+        if_not_found: "about.yaml から会社名を取得して追加（可能な場合）"
+        note: "必須ではないが、含まれている方がSEO的に望ましい"
+    
+    auto_fix_process: |
+      1. 生成した alt テキストを検証
+      2. 不適切な点を発見したら自動的に改善
+      3. 改善後の alt テキストで search_replace を実行
+      4. 検証結果を報告
+    
+    output_on_quality_check:
+      if_all_pass: |
+        ✅ すべての alt 属性が品質基準をクリアしました
+      
+      if_auto_fixed: |
+        ✅ 一部の alt 属性を自動改善しました
+        
+        改善内容:
+        - {image_path}: "{before}" → "{after}" （理由: {reason}）
+  
+  output:
+    template: |
+      ✅ 画像に alt 属性を設定しました
+      
+      【<Image> / <img> タグ】
+      更新したファイル:
+      - {file_list}
+      
+      追加した alt 属性:
+      - {image_path}: "{alt_text}"
+      
+      【CSS背景画像】（検出のみ）
+      - {bg_image_list}
+      
+      💡 確認:
+      生成された alt テキストが適切か確認し、必要に応じて手動で修正してください。
+
+# =============================================================================
+# ワークフロー2: metadata 設定
+# =============================================================================
+workflow_2_metadata:
+  
+  name: "app/layout.tsx に metadata を設定"
+  
+  description: |
+    title, description, keywords, openGraph, twitter を含む完全なSEO設定を自動実装。
+  
+  information_sources:
+    priority_1:
+      name: "既存 metadata（layout.tsx）"
+      action: "title, description, keywords, canonical すべて存在する場合は再利用"
+      note: "ドメイン接続で設定済みの可能性がある"
+      reuse: "既存の値をそのまま使用し、openGraph, twitter のみ新規生成"
+      canonical_handling: "既存の canonical があれば保持、なければ新規追加しない（ドメイン接続で設定済みのはず）"
+    
+    priority_2:
+      name: "about.yaml（サイト構成シート）"
+      action: "既存 metadata がない場合は about.yaml から情報を抽出"
+      extract: "site.name, contact_defaults.address, pages[].sections から会社名・地域・サービスを抽出"
+    
+    priority_3:
+      name: "app/page.tsx（コードファイル）"
+      action: "about.yaml もない場合は page.tsx から情報を抽出"
+      extract: "h1タグ、hero セクション、Footer の住所、サービスカードから情報を抽出"
+    
+  seo_generation:
+    condition: "既存 metadata がない場合のみ生成"
+    
+    note: |
+      既存 metadata がある場合（ドメイン接続で設定済み）は、
+      既存の値を再利用して openGraph, twitter のみ生成。
+    
+    # キーワード生成（市場分析）
+    keywords:
+      method: "市場・競合・検索意図を分析し、一次キーワード（5語）を選定"
+      criteria:
+        - "会社名/サービス名（必須）"
+        - "主要地域 + サービス（例: 東京 校閲）"
+        - "業界キーワード、事業内容キーワード"
+      with_metadata: "検索ボリューム推定（Low/Mid/High）、競合難易度（Low/Mid/High）"
+    
+    # タイトルタグ生成
+    title:
+      required: "会社名 + 主要地域 + 一次キーワード + CTA/ベネフィット"
+      length: "28-32全角字（600px以内）"
+      rules:
+        - "数字は半角、単位は全角（例：24時間、365日）"
+        - "同一語句の連続は2回まで"
+        - "句読点は「、」「。」、英字間は半角スペース"
+      example: "株式会社メディアプルーフ - 東京の校閲サービス | メディアの正しさを担保（32 文字）"
+    
+    # メタディスクリプション生成
+    description:
+      keyword_usage: "一次KW 2-3回、二次KW 1-2回を自然に含める"
+      length: "90-120全角字（推奨110字、途中で「…」が入らないように）"
+      structure: "会社紹介 → サービス内容 → ベネフィット → 行動喚起"
+      rules:
+        - "数字は半角、単位は全角"
+        - "ネガティブ語は使用しない（例：孤独死など）"
+        - "同一語句の連続は2回まで"
+        - "句読点は「、」「。」、英字間は半角スペース"
+      example: "株式会社メディアプルーフは、ニュース番組・広告・公共案件の校閲に特化したサービスを提供。誤字脱字のチェックに留まらず、ウラ取り・修正案の提示まで対応。東京都新宿区を拠点に、高度な校閲で制作物の品質と信頼を守ります。お気軽にお問い合わせください。（120 文字）"
+    
+  openGraph_twitter:
+    action: "openGraph と twitter を生成（常に実行）"
+    template: |
+      openGraph: {
+        title: "{title}",
+        description: "{description}",
+        type: "website",
+        locale: "ja_JP",
+      },
+      twitter: {
+        card: "summary_large_image",
+        title: "{title}",
+        description: "{description}",
+      }
+  
+  layout_update:
+    action: "app/layout.tsx を更新"
+    method: "search_replace で既存 metadata を置換、または新規作成"
+    note: |
+      既存 metadata がある場合は置換。
+      ない場合は export default function RootLayout の直前に新規作成。
+      import { Metadata } from 'next' も必要に応じて追加。
+  
+  output:
+    template: |
+      ✅ app/layout.tsx に metadata を設定しました
+      
+      【基本情報】
+      - title: {title}（{文字数} 文字）
+      - description: {description}（{文字数} 文字）
+      - keywords: [{keywords}]
+      - canonical: {canonical_url}（既存を保持、またはドメイン接続で設定済み）
+      
+      【SNS対応】
+      - openGraph: 設定完了
+      - twitter: 設定完了
+
+# =============================================================================
+# ワークフロー3: sitemap.ts 作成
+# =============================================================================
+workflow_3_sitemap:
+  
+  name: "app/sitemap.ts を作成"
+  description: "Next.js の動的サイトマップ生成機能を使用"
+  
+  process:
+    step_1:
+      action: "ベースURL を取得"
+      source: "vercel.json の destination"
+      extraction: |
+        1. vercel.json を read_file で読み込む
+        2. redirects[].destination から "https://www.{DOMAIN}/:path*" を探す
+        3. "/:path*" を削除して "https://www.{DOMAIN}" を抽出
+      pattern: "https://[^/:]+"
+      fallback: "vercel.json がなければユーザーに確認"
+    
+    step_2:
+      action: "ページ一覧を取得（ファイルシステムのみ）"
+      status: "CRITICAL"
+      skip_allowed: false
+      enforcement: "MANDATORY"
+      
+      critical_rule: |
+        🚨 CRITICAL: ファイルシステム上の page.tsx のみを検出する。
+        コード内のリンク（<a href="...">, <Link href="...">）は検出しない。
+        外部URLは絶対に含めない。
+        
+        🚨 CRITICAL: リダイレクト専用ページを除外する（重複コンテンツ防止）
+        app/page.tsx を read_file で読み込み、redirect() や notFound() が含まれるか確認。
+        リダイレクト専用ページは sitemap に含めない。
+        
+        例:
+        - app/page.tsx が redirect('/home') → / は sitemap に含めない
+        - 実際のコンテンツ（/home/）のみ sitemap に含める
+        
+        この制約を守らないと:
+        - 外部URLが混入する危険性
+        - 重複コンテンツとしてGoogleに判断される危険性
+        絶対にスキップしてはいけません。
+      
+      url_prefix_handling:
+        description: "URL Prefix オプションが指定された場合の処理"
+        
+        when_prefix_specified: |
+          🚨 CRITICAL: --prefix または prefix= が指定された場合、
+          そのパス配下の page.tsx のみを検出する。
+          
+          例: --prefix /blog
+          - 検出対象: app/blog/**/page.tsx のみ
+          - 除外: app/page.tsx, app/about/page.tsx, app/contact/page.tsx など
+          
+          検出コマンド例:
+          - glob_file_search: pattern="**/page.tsx", target="app/blog/"
+          - find: find app/blog -name "page.tsx"
+        
+        when_prefix_not_specified: |
+          従来通り app/ 配下のすべての page.tsx を検出
+        
+        examples:
+          with_prefix:
+            command: "/google-submit --prefix /blog"
+            detection_target: "app/blog/"
+            detected_files:
+              - "app/blog/page.tsx"
+              - "app/blog/post-1/page.tsx"
+              - "app/blog/post-2/page.tsx"
+            excluded_files:
+              - "app/page.tsx"
+              - "app/about/page.tsx"
+              - "app/contact/page.tsx"
+          
+          without_prefix:
+            command: "/google-submit"
+            detection_target: "app/"
+            detected_files:
+              - "app/page.tsx"
+              - "app/about/page.tsx"
+              - "app/blog/page.tsx"
+              - "app/contact/page.tsx"
+      
+      method:
+        tool: "grep または glob_file_search"
+        pattern: "**/page.tsx"
+        target: "app/ ディレクトリ（または prefix 指定時は app/{prefix}/）"
+        example_command: 'find app -name "page.tsx"'
+        example_command_with_prefix: 'find app/blog -name "page.tsx"'
+      
+      detection_result:
+        description: "検出されるのはファイルパスのみ"
+        examples:
+          - "app/page.tsx"
+          - "app/about/page.tsx"
+          - "app/company/page.tsx"
+          - "app/blog/[slug]/page.tsx"
+        
+        not_detected:
+          - "コード内の <a href='https://google.com'> ← 検出しない"
+          - "コード内の <Link href='/about'> ← 検出しない"
+          - "外部URL ← 検出しない"
+      
+      redirect_page_check:
+        description: "リダイレクト専用ページを除外（重複コンテンツ防止）"
+        
+        detection_method: |
+          より安全な検出方法（誤検出を防ぐ）:
+          
+          1. 検出された各 page.tsx を read_file で読み込む
+          2. 以下のパターンを検索（より正確）:
+             - "return redirect("
+             - "return permanentRedirect("
+             - "return notFound()"
+          
+          3. コメント内の redirect は無視:
+             - // TODO: redirect... → 検出しない（コメント）
+             - /* redirect... */ → 検出しない（コメント）
+             - return redirect( → 検出する（実際のコード）
+        
+        process: |
+          検出された各 page.tsx を read_file で読み込み、
+          以下を確認してリダイレクトページかどうか判定:
+          - "return redirect(" が含まれるか（より正確）
+          - "return permanentRedirect(" が含まれるか
+          - "return notFound()" が含まれるか
+          
+          ⚠️ 単に "redirect(" だけではなく、"return redirect(" で検索することで、
+          コメント内の redirect を誤検出しない。
+        
+        examples:
+          redirect_page:
+            file: "app/page.tsx"
+            content: |
+              export default function Page() {
+                return redirect("/home");  // ← "return redirect(" を検出
+              }
+            判定: "リダイレクトページ → sitemap から除外"
+            url: "/" ← 除外
+          
+          content_page_with_comment:
+            file: "app/about/page.tsx"
+            content: |
+              // TODO: 将来的に redirect('/new') を実装 ← コメント（"return" がない）
+              export default function AboutPage() {
+                return <div>About</div>;  // 実際のコンテンツ
+              }
+            判定: "コンテンツページ → sitemap に含める"
+            url: "/about/" ← 含める ✅
+          
+          conditional_redirect:
+            file: "app/dashboard/page.tsx"
+            content: |
+              export default function DashboardPage() {
+                if (!isLoggedIn) {
+                  return redirect('/login');  // 条件付き
+                }
+                return <div>Dashboard</div>;  // 通常はコンテンツ
+              }
+            判定: "コンテンツページ → sitemap に含める"
+            url: "/dashboard/" ← 含める ✅
+            note: |
+              条件付きリダイレクトは、実際のコンテンツもあるため含める。
+              ただし、シンプルに判定するなら除外しても良い（ケースバイケース）。
+        
+        exclusion_rule: |
+          以下を含む page.tsx は sitemap から除外:
+          - "return redirect("
+          - "return permanentRedirect("
+          - "return notFound()"
+          
+          以下は含める（除外しない）:
+          - "redirect(" のみ（return がない）← コメントの可能性
+          - "if ... return redirect(" ← 条件付き、実際のコンテンツもある
+        
+        simple_approach:
+          description: "シンプルな判定方法（推奨）"
+          rule: |
+            ページ全体が redirect のみで、他にJSXコンテンツがない場合のみ除外。
+            
+            検出方法:
+            1. "return redirect(" が含まれる
+            2. かつ、return (<div や return <section などのJSXが含まれない
+            3. → リダイレクト専用ページと判定
+        
+        critical_note: |
+          🚨 重要: リダイレクトページを sitemap に含めると、
+          Googleが重複コンテンツと判断し、SEO的に悪影響。
+          必ずチェックして除外すること。
+          
+          ただし、誤検出（実際のコンテンツページを除外）も避ける必要がある。
+      
+      conversion_rules:
+        description: "ファイルパスをURLパスに変換（5ステップ）"
+        
+        step_1: "app/ プレフィックスを削除"
+        step_2: "/page.tsx サフィックスを削除"
+        step_3: "空文字列の場合は / にする"
+        step_4: "末尾に / を追加（/ 以外）"
+        step_5: "[slug], [id] などを含む場合は親ディレクトリまで"
+        
+        examples:
+          - input: "app/page.tsx"
+            output: "/"
+          
+          - input: "app/about/page.tsx"
+            step_1: "about/page.tsx"
+            step_2: "about/"
+            output: "/about/"
+          
+          - input: "app/blog/[slug]/page.tsx"
+            step_1: "blog/[slug]/page.tsx"
+            step_2: "blog/[slug]/"
+            step_5: "blog/（[slug] を削除）"
+            output: "/blog/"
+        
+        dynamic_route_handling:
+          rule: "[slug], [id], [...slug] を含むパスは親ディレクトリまで"
+          reason: "具体的な値が不明なため、一覧ページのみ含める"
+          pattern: "正規表現で \\[.*\\] を検出し削除"
+    
+    step_3:
+      action: "app/sitemap.ts を生成"
+      
+      template: |
+        import type { MetadataRoute } from 'next';
+
+        export default function sitemap(): MetadataRoute.Sitemap {
+          const baseUrl = '{BASE_URL}';
+          
+          const routes = [
+            {ROUTES}
+          ];
+
+          return routes.map((route) => ({
+            url: `${baseUrl}${route}`,
+            lastModified: new Date(),
+            changeFrequency: 'monthly' as const,
+            priority: route === '/' || route === '/home/' ? 1.0 : 0.8,
+          }));
+        }
+      
+      priority_note: |
+        priority の設定:
+        - / または /home/ → 1.0（最重要）
+        - その他のページ → 0.8
+        
+        ⚠️ 注意: / がリダイレクトページの場合、
+        redirect_page_check で除外されるため、
+        実際には /home/ のみが priority: 1.0 になる。
+      
+      validation:
+        - "ベースURL が https:// で始まる"
+        - "ベースURL に www. が含まれる（vercel.json の正規URL と一致）"
+        - "すべてのページが含まれる"
+        - "末尾スラッシュが統一されている"
+        - "ベースURL に末尾スラッシュがない"
+      
+      url_consistency_check:
+        description: "vercel.json と sitemap.ts の URL が統一されているか確認"
+        
+        check_1:
+          name: "プロトコルの一致"
+          rule: "vercel.json の destination と sitemap.ts の baseUrl が両方とも https://"
+          example: "https://www.example.jp"
+        
+        check_2:
+          name: "www の有無の一致"
+          rule: "vercel.json で www.example.jp なら、sitemap も www.example.jp"
+          note: "どちらも WWW_DOMAIN（正規URL）を使用"
+        
+        check_3:
+          name: "ドメイン名の一致"
+          rule: "vercel.json と sitemap.ts で同じドメイン名"
+          example: "example.jp（同一）"
+        
+        critical_note: |
+          🚨 重要: sitemap は必ず vercel.json から BASE_URL を取得する。
+          手動で指定せず、必ず vercel.json を参照すること。
+          これにより、vercel.json と sitemap.ts の URL が自動的に統一される。
+  
+  output:
+    template: |
+      ✅ app/sitemap.ts を作成しました
+      
+      - ベースURL: {BASE_URL}
+      - 対象ページ数: {PAGE_COUNT}件
+      - 生成URL: /sitemap.xml
+
+# =============================================================================
+# ワークフロー4: robots.txt 作成
+# =============================================================================
+workflow_4_robots:
+  
+  name: "public/robots.txt を作成"
+  description: "検索エンジンのクローラーを制御"
+  
+  process:
+    step_1:
+      action: "ベースURL を取得"
+      
+      source: "workflow_3 で取得した BASE_URL を再利用"
+      
+      critical_note: |
+        🚨 重要: BASE_URL は workflow_3（sitemap）と同じものを使用。
+        これにより、robots.txt の Sitemap URL と実際の sitemap.xml の URL が
+        自動的に統一される。
+        
+        必ず https + www の形式（vercel.json の正規URL）を使用。
+      
+      fallback: |
+        workflow_3 で BASE_URL を取得していない場合:
+        1. vercel.json を read_file で読み込む
+        2. redirects[].destination から "https://www.{DOMAIN}" を抽出
+        3. vercel.json と同じ URL を使用（一貫性を保証）
+    
+    step_2:
+      action: "public/robots.txt を生成"
+      
+      method:
+        tool: "write"
+        target: "public/robots.txt"
+      
+      content_template: |
+        User-agent: *
+        Allow: /
+        
+        Sitemap: {BASE_URL}/sitemap.xml
+      
+      validation:
+        - "User-agent: * が含まれる"
+        - "Allow: / が含まれる"
+        - "Sitemap URL が https:// で始まる"
+  
+  output:
+    template: |
+      ✅ public/robots.txt を作成しました
+      
+      内容:
+      - User-agent: * （すべてのクローラーを許可）
+      - Allow: / （すべてのパスを許可）
+      - Sitemap: {BASE_URL}/sitemap.xml
+
+# =============================================================================
+# ワークフロー5: URLスラッグ最適化
+# =============================================================================
+workflow_5_url_slug:
+  
+  name: "URLスラッグを最適化"
+  description: "サイトの内容を分析して、SEOフレンドリーなURL設計を提案"
+  
+  process:
+    step_1:
+      action: "日本語ディレクトリを検出"
+      
+      method:
+        tool: "list_dir"
+        target: "app/"
+        
+        detection: |
+          app/ 配下のディレクトリ名を取得し、
+          日本語（ひらがな、カタカナ、漢字）や特殊文字を含むものを検出。
+      
+      examples:
+        - '✅ 検出: app/会社概要/'
+        - '✅ 検出: app/お問い合わせ/'
+        - '✅ 検出: app/サービス紹介/'
+        - '❌ スキップ: app/company/'
+    
+    step_2:
+      action: "各ディレクトリの page.tsx を読み込んでコンテンツを分析"
+      
+      method: |
+        検出した日本語ディレクトリごとに page.tsx を読み込み、
+        h1タグ、metadata.title、主要コンテンツから役割を特定する。
+      
+      example: |
+        app/会社概要/page.tsx を読み込む
+        → h1: "会社概要"
+        → 役割: 会社情報のページ
+    
+    step_3:
+      action: "サイトの内容を見て、適切な英語スラッグを生成"
+      
+      instructions: |
+        ページの内容（h1、metadata、本文）を分析し、
+        最適な英語スラッグを生成する。
+        小文字、ハイフン区切りで簡潔に（1-2単語推奨）。
+      
+      common_translations:
+        - "会社概要/会社情報 → company"
+        - "お問い合わせ/問い合わせ → contact"
+        - "事業内容 → business"
+        - "サービス/サービス紹介 → services"
+        - "実績 → works"
+        - "採用情報 → recruit"
+        - "ニュース → news"
+        - "ブログ → blog"
+      
+      slug_rules:
+        - "小文字のみ使用"
+        - "単語の区切りはハイフン（-）"
+        - "簡潔に（1-2単語推奨）"
+    
+    step_4:
+      action: "提案を出力（実装はユーザーが手動で実施）"
+      
+      note: |
+        🚨 重要: このワークフローは提案のみを行います。
+        実際のディレクトリのリネームはユーザーが手動で行う必要があります。
+        
+        理由: ディレクトリ移動は以下の影響があるため：
+        - Git 履歴への影響
+        - import パスの一括変更が必要
+        - ビルドエラーのリスク
+  
+  output:
+    template: |
+      ✅ URLスラッグを最適化しました
+      
+      【現状】
+      日本語を含むディレクトリ:
+      - {japanese_dir_1}（内容: {content_summary_1}）
+      - {japanese_dir_2}（内容: {content_summary_2}）
+      
+      【推奨される変更】
+      - {current_1} → {suggested_1}（理由: {reason_1}）
+      - {current_2} → {suggested_2}（理由: {reason_2}）
+      
+      ⚠️ リネーム手順:
+      ディレクトリのリネームは以下の手順で手動で実施してください：
+      
+      1. git mv {current} {suggested}
+      2. すべてのリネームが完了してから git commit
+      3. git push origin main
+      
+      💡 注意:
+      - ディレクトリをリネームすると、import パスも変更が必要です
+      - Next.js が自動的に更新しますが、ビルドエラーが出る場合は手動で修正してください
+
+# =============================================================================
+# 実行順序
+# =============================================================================
+execution_order:
+  description: "「Google提出」トリガーで以下の順序で実行"
+  
+  critical_rules:
+    - "🚨 すべてのワークフローを順番に実行し、スキップしないこと"
+    - "🚨 各ワークフローの MANDATORY ステップを絶対にスキップしないこと"
+    - "🚨 表面的な確認だけでなく、品質チェックを必ず実行すること"
+    - "🚨 workflow_0 は最初に実行し、ユーザーがスキップを選択した場合のみスキップ可能"
+  
+  steps:
+    - order: 0
+      workflow: "workflow_0_verification"
+      name: "所有権確認ファイル確認"
+      mandatory_steps:
+        - "ユーザーに HTML ファイルのダウンロードと保存を案内"
+        - "public/ に保存されたファイルの存在を確認"
+        - "確認手順を案内"
+      skip_allowed: true
+      skip_condition: "ユーザーが「スキップ」と入力した場合のみ"
+      note: "DNS 設定不要で顧客ドメインに対応（ユーザーがダウンロードしたファイルを使用）"
+    
+    - order: 1
+      workflow: "workflow_1_alt_tags"
+      name: "altタグ設定"
+      mandatory_steps:
+        - "画像の検出（multiline モード使用）"
+        - "alt 属性の確認（存在するだけでなく、内容も確認）"
+        - "品質チェック&自動改善（MANDATORY, skip_allowed: false）"
+        - "不適切な alt の修正"
+      warning: "❌ alt の存在確認だけで完了としない（品質チェック必須）"
+    
+    - order: 2
+      workflow: "workflow_2_metadata"
+      name: "metadata 設定"
+      mandatory_steps:
+        - "既存 metadata の確認"
+        - "情報収集（優先順位に従う）"
+        - "SEO情報生成（市場分析含む）"
+        - "layout.tsx の更新"
+    
+    - order: 3
+      workflow: "workflow_3_sitemap"
+      name: "sitemap.ts 作成"
+      mandatory_steps:
+        - "ベースURL取得"
+        - "ページ一覧取得（ファイルシステムのみ）"
+        - "sitemap.ts 生成"
+      warning: "❌ 外部URLを含めない（ファイルシステムのみ）"
+    
+    - order: 4
+      workflow: "workflow_4_robots"
+      name: "robots.txt 作成"
+      mandatory_steps:
+        - "ベースURL取得"
+        - "robots.txt 生成"
+    
+    - order: 5
+      workflow: "workflow_5_url_slug"
+      name: "URLスラッグ最適化"
+      mandatory_steps:
+        - "日本語ディレクトリ検出"
+        - "page.tsx 読み込み&分析"
+        - "英語スラッグ提案"
+  
+  completion_message: |
+    🎉 Google提出の準備が完了しました！
+    
+    ✅ 完了したタスク（すべての品質チェック含む）:
+    0. 所有権確認ファイル確認（DNS設定不要・ダウンロードしたファイルを使用）
+    1. altタグ設定（品質チェック&自動改善完了）
+    2. metadata 設定（市場分析&SEO最適化完了）
+    3. sitemap.ts 作成（外部URL混入防止完了）
+    4. robots.txt 作成
+    5. URLスラッグ最適化
+    
+    📋 次のステップ:
+    1. npm run build でビルド
+    2. Vercel にデプロイ
+    3. デプロイ後、Google Search Console で所有権確認を完了
+    4. Google Search Console に sitemap.xml を送信
+    5. Google Analytics の設定（別途）
+
+# =============================================================================
+# トラブルシューティング
+# =============================================================================
+troubleshooting:
+  issue_1:
+    problem: "sitemap.xml が生成されない"
+    solution: "npm run build でビルドし、/sitemap.xml にアクセス"
+  
+  issue_2:
+    problem: "robots.txt が表示されない"
+    solution: "public/robots.txt を確認、デプロイ後に /robots.txt にアクセス"
+  
+  issue_3:
+    problem: "metadata が反映されない"
+    solution: "npm run build でビルド、キャッシュをクリア"
+
+# =============================================================================
+# 変更履歴
+# =============================================================================
+changelog:
+  - version: "2.5.1"
+    date: "2026-01-08"
+    changes:
+      - "🔄 CHANGE: 所有権確認ファイルのフローを変更"
+      - "ユーザーが Google Search Console から HTML ファイルをダウンロードして public/ に保存"
+      - "AI がファイル名を入力させて存在を確認する方式に変更"
+      - "ファイル内容を自動生成する方式から、ダウンロードしたファイルを使用する方式に変更"
+      - "より正確な所有権確認が可能に（Google が生成したファイルをそのまま使用）"
+  
+  - version: "2.5.0"
+    date: "2026-01-08"
+    changes:
+      - "✨ NEW: 所有権確認ファイル作成機能を追加（workflow_0）"
+      - "DNS 設定不要で顧客ドメインの所有権確認が可能"
+      - "Google Search Console の HTML ファイルアップロード方式に対応"
+      - "public/ に確認ファイルを自動作成"
+      - "ユーザーがスキップを選択した場合のみスキップ可能"
+      - "ワークフロー数を 5 → 6 に増加"
+      - "execution_order に workflow_0 を追加"
+      - "completion_message を更新"
+  
+  - version: "2.4.0"
+    date: "2026-01-08"
+    changes:
+      - "✨ NEW: URL Prefix オプションを追加（Google Search Console の URL プレフィックス プロパティ対応）"
+      - "url_prefix_option セクションを新規追加"
+      - "--prefix /path または prefix=/path で特定パス配下のみを対象にできる"
+      - "workflow_1: prefix 指定時は該当パス配下のコンポーネントのみ対象"
+      - "workflow_2: prefix 指定時は該当パスの layout.tsx を優先更新"
+      - "workflow_3: prefix 指定時は該当パス配下の page.tsx のみ sitemap に含める"
+      - "workflow_5: prefix 指定時は該当パス配下のディレクトリのみ対象"
+      - "google-submit.md コマンドファイルに URL Prefix Option セクションを追加"
+      - "後方互換性を維持（prefix 未指定時は従来通りサイト全体を対象）"
+  
+  - version: "2.3.0"
+    date: "2025-11-07"
+    changes:
+      - "🚨 CRITICAL: リダイレクトページ除外機能を追加（重複コンテンツ防止）"
+      - "workflow_3: redirect_page_check を追加"
+      - "redirect(), permanentRedirect(), notFound() を含むページを除外"
+      - "app/page.tsx が redirect('/home') → / を除外、/home/ を含める"
+      - "priority 設定を修正（/ または /home/ が 1.0）"
+      - "Googleの重複コンテンツペナルティを防止"
+      - "ユーザーフィードバック（実際の重複問題）を反映"
+  
+  - version: "2.2.0"
+    date: "2025-11-04"
+    changes:
+      - "🚨 CRITICAL: 品質チェックを MANDATORY 化（絶対にスキップ不可）"
+      - "workflow_1: quality_check_and_fix を status: MANDATORY, skip_allowed: false に設定"
+      - "workflow_1: 冗長パターンを7つに拡張（修飾語、重複語、語尾の冗長性）"
+      - "workflow_1: 正しい検索パターンを明記（'src=.*\.(jpg|png|jpeg|svg|webp)' 推奨）"
+      - "workflow_1: 失敗パターンを明記（'<Image|<img' は避ける）"
+      - "workflow_3: step_2 を CRITICAL 化（外部URL混入防止）"
+      - "execution_order: 各ワークフローの mandatory_steps を明記"
+      - "execution_order: critical_rules を追加（スキップ禁止を明示）"
+      - ".cursor/rules/workflows.md: Rule 3 を追加（品質チェックスキップ禁止）"
+      - "表面的な確認だけでなく、品質チェックを必ず実行する設計に変更"
+      - "ユーザーフィードバック（実際の失敗例）を完全反映"
+  
+  - version: "2.1.0"
+    date: "2025-11-04"
+    changes:
+      - "workflow_1: multiline モード対応（複数行にまたがる Image タグを検出）"
+      - "workflow_1: 品質チェック機能を追加（文字数、冗長語、具体性）"
+      - "workflow_1: 不適切な alt を自動改善（「画像」「写真」「test」など）"
+      - "実際の使用で発見された問題を修正"
+  
+  - version: "2.0.0"
+    date: "2025-11-04"
+    changes:
+      - "大幅なシンプル化（1,050行 → 570行、46%削減）"
+      - "workflow_1: altタグを簡潔化（AIの判断に任せる）"
+      - "workflow_2: metadata を簡潔化（重要なルールのみ残す）"
+      - "workflow_3: sitemap は現状維持（外部URL混入防止のため）"
+      - "workflow_4: robots は現状維持（重要な設定ファイルのため）"
+      - "workflow_5: URLスラッグを簡潔化"
+      - "過度な構造化を避け、AIの柔軟性を活かす設計に変更"
+  
+  - version: "1.5.0"
+    date: "2025-11-04"
+    changes:
+      - "workflow_1: 画像検出戦略を改善（src= 検索を優先）"
+      - "workflow_1: Hero.tsx, Features.tsx などのコンポーネント内画像を確実に検出"
+      - "クローンしたプロジェクトでの画像検出精度を向上"
+  
+  - version: "1.4.0"
+    date: "2025-11-04"
+    changes:
+      - "workflow_2: about.yaml の読み込み方法を明示（read_file）"
+      - "workflow_2: page.tsx の読み込み方法を明示（read_file + 抽出方法）"
+      - "workflow_2: 正規表現での抽出方法を詳細化（h1タグ、住所など）"
+      - "workflow_5: page.tsx の読み込みプロセスを明確化"
+      - "workflow_5: 複数ファイルの read_file 手順を明確化"
+      - "すべてのワークフローで「どう読み込むか」を明示"
+      - "AIが推測せず確実に実行できるよう改善"
+  
+  - version: "1.3.0"
+    date: "2025-11-04"
+    changes:
+      - "workflow_1: 画像検出を4つのパターンに拡張（包括的検出）"
+      - "workflow_1: Image, img, /img/, CSS背景画像をすべて検出"
+      - "workflow_1: 改行・動的インポート・条件分岐にも対応"
+      - "workflow_1: CSS背景画像は検出のみ（alt設定不可のため）"
+      - "workflow_1: 前後3行のコンテキスト取得（-B 3 -A 3）"
+      - "workflow_1: output を「設定しました」に修正"
+      - "より正確な画像検出で SEO 品質向上"
+  
+  - version: "1.2.0"
+    date: "2025-11-04"
+    changes:
+      - "workflow_1: 5つの情報源を組み合わせた alt テキスト自動生成"
+      - "workflow_5: サイトの内容を分析してスラッグを生成"
+      - "workflow_5: page.tsx を読み込んで h1・本文・metadata を分析"
+      - "完全自動化を実現（ユーザーの口数ゼロ）"
+  
+  - version: "1.1.0"
+    date: "2025-11-04"
+    changes:
+      - "各ワークフローを詳細化（エラー防止）"
+      - "workflow_3: sitemap の外部URL混入防止を強化"
+      - "workflow_4: robots.txt の作成方法を明示（write ツール）"
+      - "バージョン番号を統一（v1.1.0）"
+  
+  - version: "1.0.0"
+    date: "2025-11-04"
+    changes:
+      - "初回リリース（統合版）"
+      - "5つのワークフローを1ファイルに統合"
+      - "HTMLベースのプロンプトを参考に簡潔化"
+

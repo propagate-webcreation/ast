@@ -1,0 +1,90 @@
+---
+description: "禁止ライブラリの検知と除去 — package.json 上書き後のコード不整合を自動修正"
+globs:
+  - "app/**/*.tsx"
+  - "app/**/*.ts"
+  - "components/**/*.tsx"
+  - "components/**/*.ts"
+  - "package.json"
+alwaysApply: true
+---
+
+# 禁止ライブラリの検知と除去
+
+DefaultSetting の `package.json` に含まれないライブラリがコード側に残っている場合、
+ビルドが `Module not found` で失敗する。以下のライブラリは使用禁止であり、
+コード内にインポートや使用が見つかった場合は即座に除去すること。
+
+---
+
+## 禁止ライブラリ一覧
+
+| ライブラリ | パッケージ名 | 理由 |
+|-----------|-------------|------|
+| Lenis | `lenis`, `@studio-freight/lenis` | スムーススクロールはモバイルで不具合を起こす |
+| Swiper | `swiper` | カルーセルは禁止（グリッド/縦積みで代替） |
+| Embla Carousel | `embla-carousel-react` | 同上 |
+| Splide | `@splidejs/react-splide` | 同上 |
+| react-slick | `react-slick` | 同上 |
+| マーキー | `react-fast-marquee` | 自動横スクロール帯は禁止 |
+
+---
+
+## 検知したら行うこと
+
+### 1. Lenis / SmoothScroll の除去
+
+`lenis` または `@studio-freight/lenis` のインポートが見つかった場合:
+
+1. **インポート文を削除**: `import { ReactLenis } from "lenis/react"` 等
+2. **ラッパーコンポーネントを除去**: `<SmoothScroll>` や `<ReactLenis>` で children をラップしている場合、ラッパーを外して children だけ残す
+3. **コンポーネントファイルを削除**: `SmoothScroll.tsx` など Lenis 専用のコンポーネントファイルがあれば削除
+4. **layout.tsx を修正**: `<SmoothScroll>` のインポートと使用箇所を除去し、children をそのまま返す構造にする
+5. **package.json**: `lenis` が dependencies に残っていたら削除（通常は DefaultSetting 上書きで消えているが念のため確認）
+6. **package-lock.json を再生成**: `npm install` を実行
+
+```tsx
+// BEFORE (layout.tsx)
+import SmoothScroll from "./components/providers/SmoothScroll";
+// ...
+<body>
+  <SmoothScroll>
+    <Header />
+    {children}
+    <Footer />
+  </SmoothScroll>
+</body>
+
+// AFTER
+<body>
+  <Header />
+  {children}
+  <Footer />
+</body>
+```
+
+### 2. カルーセル / スライダーの除去
+
+swiper / embla / splide / react-slick のインポートが見つかった場合:
+
+1. インポート文と関連 CSS インポートを削除
+2. カルーセルコンポーネントをグリッド配置 (`grid-cols-1 md:grid-cols-3`) または縦積みに置換
+3. 全アイテムを同時に表示する（スライドで隠さない）
+
+### 3. マーキー / ticker の除去
+
+`react-fast-marquee` や `<marquee>` タグが見つかった場合:
+
+1. インポート文を削除
+2. コンテンツを静的な flexbox / grid 配置に置換
+
+---
+
+## スムーススクロールの代替
+
+Lenis を除去した後、ページ内スクロールが必要な場合は CSS のみで対応する:
+
+```tsx
+// layout.tsx の <html> に設定（モバイルでは無効化）
+<html lang="ja" className="scroll-auto md:scroll-smooth">
+```

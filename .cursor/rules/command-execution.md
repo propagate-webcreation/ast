@@ -1,0 +1,81 @@
+# コマンド実行ルール
+
+## 🚨 CRITICAL: カスタムコマンド実行の基本ルール
+
+**`/` で始まるコマンド入力がない限り、カスタムコマンドを実行しない。**
+
+---
+
+## ✅ コマンドを実行する条件
+
+ユーザーの入力が **`/コマンド名`** の形式で始まる場合のみ、カスタムコマンドを実行する。
+
+### 実行する例
+
+```
+/image-fetch-list
+/image-select
+/image-download
+/font-setup
+/domain-connect
+/google-submit
+/gist-json-format
+/design-recommend HomeHero
+/design-recommend app/components/home/HomeFeatures.tsx
+```
+
+---
+
+## ❌ コマンドを実行しない条件
+
+**`/` で始まらない場合は、カスタムコマンドを実行しない。**
+
+通常のコーディングタスクとして対応する。
+
+### 実行しない例
+
+```
+お問い合わせフォームを作成してください
+→ カスタムコマンドは実行しない（通常のコーディングタスクとして対応）
+
+画像を選定してください
+→ カスタムコマンドは実行しない（通常のタスクとして対応）
+
+/image-select について教えてください
+→ カスタムコマンドは実行しない（説明のみ）
+
+image-fetch-list を実行してください
+→ カスタムコマンドは実行しない（`/` がないため）
+```
+
+---
+
+## 📋 登録済みカスタムコマンド一覧
+
+| コマンド | 説明 | 実行条件 |
+|---------|------|---------|
+| `/image-fetch-list` | 画像リスト取得 | `/image-fetch-list` のみ |
+| `/image-select` | 画像選定 | `/image-select` のみ |
+| `/image-download` | 画像ダウンロード | `/image-download` のみ |
+| `/font-setup` | フォント設定 | `/font-setup` のみ |
+| `/domain-connect` | ドメイン接続 | `/domain-connect` のみ |
+| `/google-submit` | Google登録 | `/google-submit` のみ |
+| `/form-implement` | フォーム実装 | `/form-implement` のみ |
+| `/form-check-config` | フォーム設定確認（エラー診断） | `/form-check-config` のみ |
+| `/gist-json-format` | Gist用コンポーネントJSON変換 | `/gist-json-format` のみ |
+| `/design-recommend [target]` | デザイン推奨・統合 | `/design-recommend` + ターゲット指定 |
+
+---
+
+## 🎯 このルールの目的
+
+- カスタムコマンドの意図しない実行を防ぐ
+- ユーザーが明示的に `/コマンド名` を入力した場合のみ実行
+- 通常のコーディングタスクとカスタムコマンドを明確に区別
+
+---
+
+## 重要
+
+このルールは、`.cursor/commands/` 配下に定義されているすべてのカスタムコマンドに適用されます。
+

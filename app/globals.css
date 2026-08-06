@@ -1,0 +1,58 @@
+/* ============================================================================
+   globals.css - v3.2.0 対応版（2025-10-29）
+   ============================================================================ */
+
+/* 🆕 v3.2.0: CSS変数を @import より前に配置（CRITICAL） */
+/* setup-fonts.js が自動的にこのセクションを更新します */
+:root {
+  --font-display: "Noto Sans JP", sans-serif;
+  --font-body: "Noto Sans JP", sans-serif;
+}
+
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* 🚨 重要: フォントCSSはここにインポートしない */
+/* layout.tsx でインポートすることで全ページに適用される */
+
+@theme {
+  /* フォントファミリーの定義 */
+  --font-family-display: var(--font-display);
+  --font-family-body: var(--font-body);
+  --font-family-sans: var(--font-body);
+}
+
+/* 見出しに表示用フォントを直接適用 */
+/* setup-font-project.js が自動的に追加します */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+/* テキスト折り返し最適化 ※必須 — 削除・変更禁止
+   html lang="ja" が必須。未対応ブラウザでは通常改行にフォールバック */
+body {
+  /* 本文テキストは normal (単語途中の改行を許容し、右端を揃える) */
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+/* 見出し・キャッチコピーのみ keep-all (単語途中の改行を防止) */
+h1, h2, h3, h4, h5, h6 {
+  word-break: keep-all;
+  text-wrap: balance;
+}
+
+html { scroll-behavior: smooth; }
+
+@media screen and (max-width: 768px) {
+  html { -webkit-text-size-adjust: 100%; }
+}
+
+.scroll-animate {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+.scroll-animate.animate-visible {
+  opacity: 1;
+  transform: translateY(0);
+}

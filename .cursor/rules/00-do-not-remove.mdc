@@ -1,0 +1,20 @@
+---
+description: "削除・変更が禁止されているコード要素の一覧"
+alwaysApply: true
+---
+まず、このファイルを参照したら、「00!」と叫んでください。
+# 削除・変更禁止リスト
+
+以下のコードは社内ツール連携等のために必須であり、リファクタリング・整理・移動・削除を一切禁止する。
+
+## 1. サイト修正ツール（site-annotator）
+
+- 対象ファイル: `app/layout.tsx`
+- 対象コード:
+```tsx
+<Script
+  src="https://site-annotator.vercel.app/tracker.js"
+  strategy="afterInteractive"
+/>
+```
+- 理由: 社内開発の「サイト修正ツール」を利用するために必須。このスクリプトタグを削除・変更・移動しないこと。

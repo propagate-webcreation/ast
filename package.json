@@ -1,0 +1,57 @@
+{
+  "name": "default-setting",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "setup-font-project": "node scripts/setup-font-project.js",
+    "domain-connect": "node scripts/domain-connect.js",
+    "setup-fonts": "node scripts/setup-fonts.js",
+    "setup-fonts:kawaii": "npm run setup-fonts kawaii",
+    "setup-fonts:elegant": "npm run setup-fonts elegant",
+    "setup-fonts:natural": "npm run setup-fonts natural",
+    "setup-fonts:cool": "npm run setup-fonts cool",
+    "setup-fonts:simple": "npm run setup-fonts simple",
+    "setup-fonts:pop": "npm run setup-fonts pop",
+    "setup-fonts:wa": "npm run setup-fonts wa",
+    "preview:fetch": "node scripts/fetch-preview.js",
+    "clean:libs": "node .cursor/scripts/clean-prohibited-libs.js",
+    "postinstall": "node .cursor/scripts/clean-prohibited-libs.js 2>/dev/null || true"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.2.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.23.14",
+    "lucide-react": "^0.544.0",
+    "next": "^15.5.9",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-icons": "^5.5.0",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "^15.5.3",
+    "js-yaml": "^4.1.1",
+    "playwright": "^1.58.2",
+    "simple-shadcn-cli": "^1.0.0",
+    "tailwindcss": "^4",
+    "tw-animate-css": "^1.3.8",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "simple-shadcn-cli": {
+      "esbuild": ">=0.25.0"
+    }
+  }
+}

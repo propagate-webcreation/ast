@@ -1,0 +1,222 @@
+---
+description: "タイポグラフィ — フォントサイズ・テキストルール・日本語折り返し最適化"
+globs:
+  - "app/**/*.tsx"
+  - "app/**/*.ts"
+  - "components/**/*.tsx"
+alwaysApply: true
+---
+
+# タイポグラフィ
+
+> ⚠ legacy補助ルール: 矛盾時は `01-rule-priority-v3.mdc` と `05-v3-core.mdc` を優先する。
+
+## 文字は大きく・黒く
+
+- 本文: `text-[13px] md:text-[16px] leading-relaxed`（グレー禁止、`text-[#222]` 以上）
+- 4行以上は左揃え必須（長文の `text-center` 禁止）
+- Tailwind相対サイズ（`text-sm` / `text-lg` 等）全面禁止 → px固定値のみ
+
+## フォントサイズ固定テーブル（唯一の定義）
+
+| 要素 | SP（ベース） | PC（`md:`） |
+|------|------------|------------|
+| ホームヒーロー h1 | `text-[32px]` | `md:text-[40px]` |
+| 下層ヒーロー h1 | `text-[30px]` | `md:text-[36px]` |
+| h2 | `text-[24px]` | `md:text-[32px]` |
+| h3 | `text-[18px]` | `md:text-[26px]` |
+| h4 | `text-[16px]` | `md:text-[20px]` |
+| 本文 p | `text-[13px]` | `md:text-[16px]` |
+| ボタン / ラベル | `text-[13px]` | `md:text-[20px]` |
+| キャプション | `text-[10px]` | `md:text-[14px]` |
+
+例外: input/select/textarea は `text-base`（16px、iOSズーム防止）
+
+## 見出し階層
+
+- h1: ヒーロー専用（ページあたり1回）
+- h2: セクションタイトル専用
+- h3: セクション内見出し
+- alt テキストは日本語で記述
+
+## ウェイトの使い分け
+
+- タイトル（h1〜h3）: `font-bold`
+- 本文（p）: 通常ウェイト（`font-normal` or `font-medium`）
+- タイトルと本文に明確なコントラストを持たせる（両方太字は NG）
+
+## 行間（line-height）
+
+- 本文: `leading-relaxed`（1.625）
+- タイトル: `leading-snug`（1.375）〜 `leading-tight`（1.25）
+- タイトルの行間が広すぎると別グループに見えるため注意
+
+## 日本語テキスト折り返し最適化（必須実装）
+
+`globals.css` に以下が**初稿コーディング時点から**組み込み済み（11-initial-build 参照）。
+後から追加するのではなく、最初から存在すること。
+
+```css
+/* テキスト折り返し最適化 ※必須 — 削除・変更禁止 */
+h1 {
+  text-wrap: wrap;
+  word-break: normal;
+}
+h2, h3, h4, h5, h6 {
+  text-wrap: balance;
+  word-break: auto-phrase;
+}
+```
+
+| プロパティ | 対象 | 効果 |
+|-----------|------|------|
+| （上記なし） | **h1** | ヒーローキャッチコピー等は通常折り返し（balance / auto-phrase で「改行されまくる」違和感を避ける） |
+| `text-wrap: balance` + `word-break: auto-phrase` | h2〜h6 | 複数行見出しの各行文字数を均等化 + 文節境界で改行 |
+| （適用しない） | **p, li（本文）** | iOS Safari で `text-wrap: pretty` が右側余白をガタつかせるため適用しない（PC DevTools では再現しないが実機で発生） |
+
+- `word-break: auto-phrase` は**見出し（h2〜h6）のみ**に適用する。本文（p, li）は行数が多く自然に折り返されるため不要。適用すると行長のバラつきが目立つ
+- **本文（p, li）には `text-wrap: pretty` を適用しない** — iOS Safari の WebKit が孤立語回避のために手前の行を縮め、右側に大きな余白を作るため
+- `html lang="ja"` が必須
+- `auto-phrase` は Chrome 119+ で有効。未対応ブラウザは通常の折り返しにフォールバック
+- **h1 のキャッチコピー・CTA 等の重要テキストは目視確認を推奨**
+
+## auto-phrase がレイアウトで壊れるケース
+
+globals.css の指定だけではテキスト折り返しが期待どおりにならないパターンがある。
+**CSS 側を広げるのではなく、マークアップ／ユーティリティ側で補う。**
+
+### 1. Flex 子の `min-width: auto` 問題
+
+Flex アイテムのデフォルト `min-width: auto` が、テキストの縮小・折り返しを阻害する。
+
+```tsx
+// ❌ テキストが Flex 子の幅を超えても折り返されない
+<div className="flex gap-4">
+  <div className="flex-1">
+    <p>長いテキスト...</p>
+  </div>
+</div>
+
+// ✅ min-w-0 で Flex 子がコンテンツ幅以下に縮小可能
+<div className="flex gap-4">
+  <div className="flex-1 min-w-0">
+    <p>長いテキスト...</p>
+  </div>
+</div>
+```
+
+`overflow-hidden` でも同等の効果があるが、`min-w-0` の方が副作用が少ない。
+
+### 2. 無意味な `<span>` によるテキスト分割
+
+`auto-phrase` は要素境界をまたいで文節を認識できない。
+和文の流れの中で短い `<span>` に分割すると、改行判定が壊れる。
+
+```tsx
+// ❌ auto-phrase が「お客様の」を一塊と認識できない
+<p><span>お客</span><span>様の</span>声をご紹介</p>
+
+// ✅ テキストを分割しない
+<p>お客様の声をご紹介</p>
+
+// ✅ スタイル目的の span は OK（ただし最小限に）
+<p><span className="text-primary font-bold">お客様の声</span>をご紹介</p>
+```
+
+### 3. 文章ブロックが `<div>` のままになっている
+
+本文・段落は **`<p>` / `<li>` で書く**のがマークアップ的に正しい。
+`<div>` のままだとセマンティクスが崩れるため、文章ブロックは必ず `<p>` に置き換える。
+
+```tsx
+// ❌ 文章ブロックを div で囲っている
+<div className="text-[13px]">
+ お客様の声をご紹介します。長い文章がここに入ります。
+</div>
+
+// ✅ 文章ブロックは p にする
+<p className="text-[13px]">
+ お客様の声をご紹介します。長い文章がここに入ります。
+</p>
+```
+
+**`[text-wrap:pretty]` の付与は禁止** — iOS Safari で右側余白が大きくガタつくため。
+
+### 4. globals.css の要素セレクタが Tailwind ユーティリティに勝つ（`@layer` 問題）
+
+Tailwind のユーティリティ（`text-[24px]` 等）は `@layer utilities` の中に出力される。
+一方、globals.css にそのまま書いた要素セレクタ（`span { font-size: 13px; }` 等）は **レイヤーなし（unlayered）** になる。
+
+CSS の仕様では **unlayered のスタイルは `@layer` 内のスタイルより常に優先される**。
+そのため h2 に `text-[24px]` を付けていても、中の `<span>` に globals.css の `font-size` が勝ってしまう。
+
+```css
+/* ❌ globals.css に書いてしまうと、Tailwind の text-[24px] 等を上書きしてしまう */
+span {
+  font-size: 13px;
+}
+```
+
+```tsx
+{/* h2 は text-[24px] なのに、中の span だけ 13px になる */}
+<h2 className="text-[24px]">
+  <span>お客様の声</span>をご紹介
+</h2>
+```
+
+**対処:**
+- **globals.css に要素セレクタでのスタイリングを書かない**（初期セットアップの font-family / text-wrap を除く）
+- フォントサイズ・色・余白は **すべて Tailwind ユーティリティで指定する**
+- どうしても globals.css に書く必要がある場合は **`@layer base { ... }` の中に入れる**（Tailwind utilities が勝てるようになる）
+
+### コーディング時チェックリスト
+
+- [ ] 文章ブロックが `<div>` ではなく `<p>` / `<li>` になっているか
+- [ ] テキストを包む Flex 子に `min-w-0` があるか
+- [ ] 和文の途中を無意味な `<span>` で分割していないか
+- [ ] `whitespace-nowrap` がナビリンク以外に付いていないか（ボタン・住所・本文すべて禁止）
+- [ ] globals.css に要素セレクタで `font-size` / `color` / `margin` 等を書いていないか
+
+## テキスト折り返しの禁止事項
+
+| 禁止 | 理由 |
+|------|------|
+| `word-break: break-all` | 日本語で不自然な切断になる |
+| `word-break: break-keep` / `[word-break:break-keep]` | 375px で横スクロールの原因 |
+| `whitespace-nowrap`（ナビリンク以外すべて） | Flex 子に1つあるだけで親コンテナ全体がオーバーフロー。ボタン・住所・本文すべて禁止 |
+| `overflow-x: hidden` で横スクロールを隠す | 根本解決ではない |
+| プレフィックスなし `<br />` の新規挿入 | SP/PC両方に影響する |
+
+### whitespace-nowrap の連鎖オーバーフロー（最重要）
+
+`whitespace-nowrap` を持つ要素が Flex / Grid の子にあると、
+テキスト幅 = コンテナ最小幅になり、**兄弟要素まで巻き込んでビューポートを超える**。
+
+```tsx
+// ❌ ボタンに whitespace-nowrap → FV の見出し・本文まで右にはみ出す
+<div className="flex flex-col gap-4">
+  <h1>あなたの「困った」を解消します</h1>       {/* 巻き込まれてはみ出す */}
+  <p>暮らしのあらゆるお困りごとに対応。</p>    {/* 巻き込まれてはみ出す */}
+  <a className="whitespace-nowrap w-full">電話で今すぐ無料相談 080-0000-0000</a>  {/* 元凶 */}
+</div>
+
+// ✅ whitespace-nowrap を除去するだけで全要素が収まる
+<div className="flex flex-col gap-4">
+  <h1>あなたの「困った」を解消します</h1>
+  <p>暮らしのあらゆるお困りごとに対応。</p>
+  <a className="w-full">電話で今すぐ無料相談 080-0000-0000</a>
+</div>
+```
+
+例外: ヘッダーナビリンクは `whitespace-nowrap` を許可（17-page-layout 参照）。
+
+## `<br>` タグの使い分け
+
+- **h2〜h6**: `text-wrap: balance` が自動最適化するため、`<br>` は原則不要。
+- **h1（キャッチコピー）**: balance をかけないため、意図した改行には `<br>`（SP/PC別など）を使ってよい。
+
+| 用途 | コード |
+|------|--------|
+| SPのみ改行 | `<br className="md:hidden" />` |
+| PCのみ改行 | `<br className="hidden md:inline" />` |
+| SP/PC両方改行 | `<br />`（素のまま）— h1 のキャッチコピー等で併用可 |

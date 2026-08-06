@@ -1,0 +1,314 @@
+# =============================================================================
+# Google スプレッドシート Form API 作成・接続ワークフロー（v3.0.0）
+# =============================================================================
+# 目的: お問い合わせフォーム送信内容を Google スプレッドシートに保存（メール通知とは独立した別系統）
+#
+# 対象: Next.js App Router + Google Sheets API
+# 作成日: 2025-02-05
+# 最終更新: 2026-05-28
+# =============================================================================
+
+schema_version: "3.0.0"
+
+metadata:
+  workflow_name: "Spreadsheet Form API 作成・接続"
+  target_framework: "Next.js App Router + Google Sheets API"
+  enforcement: "MANDATORY"
+  version: "3.0.0"
+  created: "2025-02-05"
+  updated: "2026-05-28"
+  description: |
+    お問い合わせフォーム送信内容を Google スプレッドシートに保存する。
+    UFA のメール通知とは独立した別系統の処理として実装する。
+
+    以下のいずれかまたは全てを行う:
+    1. app/api/contact/route.ts の作成または更新（タブ名設定含む）
+    2. フォーム実装方式（v3 Server Action / v2 form-handler.js）を判定し、適切な位置に /api/contact 呼び出しを挿入
+    3. 環境変数（GOOGLE_SPREADSHEET_API, SPREADSHEET_KEY）の説明・.env.example の整備
+
+    v3.0.0 で変わったこと:
+    - フォーム実装方式の自動判定ロジックを追加（v3 Server Action / v2 form-handler.js）
+    - v3 では handleSubmit 内・result.ok 分岐に挿入
+    - v2 では FormHandler.init の onSuccess 内に挿入（旧仕様、後方互換のため残す）
+    - /api/contact 呼び出しに .catch() を必須化（スプシ書き込み失敗がメール通知に影響しないように）
+
+# =============================================================================
+# ユーザー入力形式（理想）
+# =============================================================================
+user_input:
+  ideal_format: 'タブ名は "実際のタブ名に入れ替え"'
+  variants:
+    - 'タブ名は "フォーム送信"'
+    - 'タブ名は "問い合わせ"'
+    - "タブ名は 'シミュレーション'"
+    - "タブ名は 送信ログ"
+  parse_rules:
+    - "引用符 \" または ' で囲まれた部分をタブ名として抽出"
+    - "引用符がない場合は、コマンド直後の1トークンをタブ名とする"
+    - "前後の空白はトリムする"
+
+# =============================================================================
+# フォーム実装方式の自動判定（v3.0.0 で追加）
+# =============================================================================
+form_implementation_detection:
+  description: |
+    フォームが v3（Server Action 方式）か v2（form-handler.js 方式）かを判定し、
+    /api/contact 呼び出しの挿入位置を切り替える。
+
+  v3_signals:
+    description: "v3 Server Action 方式の判定シグナル"
+    checks:
+      - file_exists: "app/actions/submit-contact.ts"
+      - import_pattern: "submitContactForm を import している"
+      - directive: "app/actions/submit-contact.ts に \"use server\"; がある"
+    insertion_point: |
+      app/contact/page.tsx の handleSubmit 内、submitContactForm() の戻り値が ok: true の分岐
+
+  v2_signals:
+    description: "v2 form-handler.js 方式の判定シグナル（後方互換）"
+    checks:
+      - pattern: "FormHandler.init の呼び出しがある"
+      - pattern: "<Script src=\"...form-handler.js\" /> がある"
+      - pattern: "(window as any).FormHandler の参照がある"
+    insertion_point: |
+      app/contact/page.tsx 内の FormHandler.init({ onSuccess: ... }) の onSuccess コールバック内
+
+  unknown:
+    action: "ユーザーに実装方式を確認する。判定不能の場合は処理を中断"
+
+# =============================================================================
+# API ルート仕様（app/api/contact/route.ts）
+# =============================================================================
+api_route:
+  path: "app/api/contact/route.ts"
+  method: "POST"
+  request_body:
+    - name
+    - email
+    - phone
+    optional_fields:
+      - region
+      - monthlyBill
+      - "その他フォームのフィールド（必要に応じて）"
+  env_required:
+    GOOGLE_SPREADSHEET_API: "Google サービスアカウントの JSON（1行に圧縮、シングルクォート '...' で囲む）"
+    SPREADSHEET_KEY: "スプレッドシート ID（URL の /d/SPREADSHEET_ID/edit の部分）"
+  sheet_behavior:
+    - "range に「タブ名」を使用。ユーザー入力のタブ名を反映: 'タブ名!A:A'、`タブ名!A1:Z1`、`タブ名!A${nextRow}` 等"
+    - "初回のみ（nextRow === 1）: 1行目に列タイトル（リクエスト body のキー名、例: name, email, phone）を `タブ名!A1:Z1` に書き、2行目に1件目のデータを `タブ名!A2:Z2` に書く。2件目以降は最下行に追記"
+    - "列構成例: 送信日時(JST), 任意フィールド..., name, email, phone（電話は先頭に ' を付けて文字列として書き込み）"
+    - "最下行に追記（get で最後の行を取得してから update）。初回はヘッダー行を書いたうえで2行目に1件目を書く"
+  tab_name_replacements:
+    location_1: "range: '〇〇!A:A' の 〇〇 をユーザー指定タブ名に"
+    location_2: "range: `〇〇!A${nextRow}` の 〇〇 をユーザー指定タブ名に"
+  default_tab_name: "フォーム送信"   # 既存コードで使われている場合の検索用
+
+  note: |
+    この API ルートは UFA とは無関係。
+    クライアントから受け取った formData をそのまま Sheets に書き込むだけ。
+    トークン認証は不要（自社サーバー内で完結）。
+
+# =============================================================================
+# フォーム接続仕様（v3 / v2 共通＋差分）
+# =============================================================================
+form_connection:
+  description: |
+    お問い合わせフォームの送信が成功したタイミングで、同じデータを POST /api/contact に送る。
+    UFA への送信（メール通知）とは独立した別系統の処理。
+
+  common_rules:
+    - "送信ペイロードはフォームの name 属性に対応するキーで構築（API の request_body と一致）"
+    - "🚨 必須: .catch((err) => console.error(err)) で握りつぶす"
+    - "理由: メール通知は既に成功済みなので、スプシ書き込みの失敗をユーザーに見せない"
+    - "await を付けない（ユーザー体験を遅延させない、fire-and-forget）"
+
+  v3_implementation:
+    description: "v3.0.0（Server Action 方式）の挿入"
+    location: "app/contact/page.tsx の handleSubmit 内、submitContactForm() の戻り値が ok: true の分岐"
+    code_template: |
+      async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+        e.preventDefault();
+        setIsSubmitting(true);
+
+        const form = e.currentTarget;
+        const fd = new FormData(form);
+        const payload = {
+          name: String(fd.get("name") ?? ""),
+          email: String(fd.get("email") ?? ""),
+          phone: String(fd.get("phone") ?? ""),
+          message: String(fd.get("message") ?? ""),
+          // 他のフィールドも同様に
+        };
+
+        const result = await submitContactForm(payload);
+        setIsSubmitting(false);
+
+        if (result.ok) {
+          // ✅ スプシ書き込み（fire-and-forget）
+          fetch("/api/contact", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          }).catch((err) => {
+            console.error("[spreadsheet sync] failed:", err);
+          });
+
+          setStatus({ type: "success", message: "送信完了しました。" });
+          form.reset();
+        } else {
+          setStatus({ type: "error", message: result.message });
+        }
+      }
+
+  v2_implementation:
+    description: "v2.0.0（form-handler.js 方式）の挿入（後方互換）"
+    location: "app/contact/page.tsx の FormHandler.init({ onSuccess: ... }) の onSuccess コールバック内"
+    code_template: |
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).FormHandler.init("site_id", token, {
+        apiBaseUrl: "https://universal-form-api.vercel.app",
+        beforeSend: (data) => { /* sanitize */ return data; },
+        onSuccess: (response) => {
+          // ✅ スプシ書き込み（fire-and-forget）
+          fetch("/api/contact", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formData),
+          }).catch((err) => console.error(err));
+
+          // 既存の成功処理
+        },
+        onError: (err) => { /* ... */ },
+      });
+
+  search_targets:
+    - "app/contact/page.tsx"
+    - "app/components/ContactForm.tsx"
+    - "app/**/ContactForm*.tsx"
+    - "app/actions/submit-contact.ts（v3 判定用）"
+
+# =============================================================================
+# ワークフロー（7ステップ）
+# =============================================================================
+workflow:
+  step_1:
+    name: "メモリ読み込みと現状把握"
+    status: "CRITICAL"
+    skip_allowed: false
+    actions:
+      - "memories/spreadsheet_form_api.yaml を読み込む"
+      - "app/api/contact/route.ts が存在するか確認"
+      - "お問い合わせフォームがどのコンポーネントにあるか特定"
+      - "既にフォームから /api/contact が呼ばれているか確認"
+
+  step_2:
+    name: "ユーザー入力からタブ名を解析"
+    status: "CRITICAL"
+    skip_allowed: false
+    actions:
+      - "コマンドに続く タブ名は \"...\" または タブ名は '...' を検出"
+      - "引用符で囲まれた部分、または引用符がない場合は直後の単語をタブ名として抽出"
+      - "未指定の場合は 'フォーム送信' をデフォルトとするか、ユーザーにタブ名を聞く"
+
+  step_3:
+    name: "🚨 フォーム実装方式の自動判定（v3 / v2）"
+    status: "CRITICAL"
+    skip_allowed: false
+    actions:
+      - "app/actions/submit-contact.ts の存在を確認"
+      - "app/contact/page.tsx に submitContactForm の import があるか確認"
+      - "app/contact/page.tsx に FormHandler.init / <Script src=\"...form-handler.js\" /> があるか確認"
+      - "判定結果を変数に保持（v3 / v2 / unknown）"
+      - "unknown の場合はユーザーに「v3（Server Action）か v2（form-handler.js）か」を確認"
+      - "判定結果は完了報告でユーザーに明示する"
+
+  step_4:
+    name: "`googleapis` パッケージのインストール"
+    status: "CRITICAL"
+    skip_allowed: false
+    actions:
+      - "package.json に googleapis が無ければ npm install googleapis を実行"
+
+  step_5:
+    name: "API ルートの作成または更新"
+    status: "CRITICAL"
+    skip_allowed: false
+    actions:
+      - "app/api/contact/route.ts が無い場合: Google Sheets API で POST を受け取り、指定タブに追記するルートを新規作成（googleapis 使用、env から GOOGLE_SPREADSHEET_API / SPREADSHEET_KEY 取得、range にタブ名を2箇所使用）"
+      - "存在する場合: range に含まれるタブ名をユーザー指定のタブ名に search_replace で2箇所とも置換"
+      - "既存の default_tab_name が別名になっている場合は、その文字列を検索してユーザー指定タブ名に置換"
+      - "初回（nextRow === 1）は1行目に列タイトル、2行目に1件目データ、2件目以降は最下行に追記する仕様を厳守"
+
+  step_6:
+    name: "フォームから /api/contact への接続（v3 / v2 で挿入位置を切り替え）"
+    status: "CRITICAL"
+    skip_allowed: false
+    actions:
+      v3_case:
+        condition: "step_3 で v3 と判定された場合"
+        steps:
+          - "app/contact/page.tsx の handleSubmit を読む"
+          - "submitContactForm() の戻り値が ok: true の分岐を特定"
+          - "その分岐に fetch('/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).catch((err) => console.error(err)) を追記"
+          - "🚨 .catch() を必ず付ける（スプシ書き込み失敗をメール通知の成否に影響させない）"
+          - "🚨 await を付けない（fire-and-forget）"
+      v2_case:
+        condition: "step_3 で v2 と判定された場合"
+        steps:
+          - "FormHandler.init({ onSuccess: ... }) を探す"
+          - "onSuccess コールバック内に fetch('/api/contact', ...).catch(...) を追記"
+          - "🚨 .catch() を必ず付ける"
+      already_connected:
+        condition: "既に /api/contact が呼ばれている場合"
+        steps:
+          - "送信フィールドが API の期待と一致しているか確認"
+          - "タブ名のみ更新する場合はフォーム側は変更しない"
+          - ".catch() が付いていなければ追加する"
+
+  step_7:
+    name: "環境変数の説明と完了報告"
+    status: "REQUIRED"
+    skip_allowed: false
+    actions:
+      - ".env.example が存在すれば、GOOGLE_SPREADSHEET_API と SPREADSHEET_KEY の説明を追記"
+      - "存在しなければ、ユーザー向けに「.env.local に GOOGLE_SPREADSHEET_API（サービスアカウント JSON）と SPREADSHEET_KEY（スプレッドシート ID）を設定すること」を完了報告に含める"
+      - "完了報告に判定した実装方式（v3 / v2）を明示する"
+      - "スプシのタブ名を完全一致させること、サービスアカウントへの共有を忘れないことを強調"
+
+# =============================================================================
+# 禁止事項・注意
+# =============================================================================
+prohibited:
+  - "GOOGLE_SPREADSHEET_API や SPREADSHEET_KEY の実際の値をコードや .env にハードコードすること（.env.example の説明のみ可）"
+  - "app/api/contact/route.ts 以外の API を勝手に変更すること"
+  - "range の列指定（A:A, A${nextRow}）を変更すること（列構成を変える場合はユーザー指示に従う）"
+  - "/api/contact の呼び出しを await すること（fire-and-forget でユーザー体験を遅延させない）"
+  - "/api/contact の呼び出しに .catch() を付けないこと（必ず付ける）"
+  - "UFA 関連の環境変数（FORM_API_TOKEN 等）を読んだり書いたりすること（このコマンドは UFA とは独立）"
+  - "v3 のフォームで onSuccess コールバックを探そうとすること（v3 には存在しない）"
+
+notes:
+  - "Google スプレッドシート側に、指定した名前のシート（タブ）を事前に作成し、サービスアカウントに編集権限を付与すること"
+  - "タブ名にスペースや特殊文字を含む場合は、そのまま文字列で指定してよい"
+  - "v3 では Server Action 内で UFA に送信した後、クライアント側で別途 /api/contact を呼ぶ二段構え（責務分離）"
+  - "より洗練された実装として、Server Action 内で UFA 送信＋Sheets 書き込みを両方行う設計もあるが、本コマンドの標準は二段構え（既存仕様との互換性のため）"
+
+# =============================================================================
+# 変更履歴
+# =============================================================================
+changelog:
+  - version: "3.0.0"
+    date: "2026-05-28"
+    changes:
+      - "🚨 BREAKING: フォーム実装方式の自動判定（v3 Server Action / v2 form-handler.js）を追加"
+      - "v3 の場合は handleSubmit 内・result.ok 分岐に挿入"
+      - "v2 の場合は FormHandler.init の onSuccess 内に挿入（後方互換）"
+      - "/api/contact 呼び出しに .catch() を必須化"
+      - "/api/contact 呼び出しを fire-and-forget（await しない）に統一"
+      - "ワークフローを 6 ステップ → 7 ステップに（実装方式判定ステップを追加）"
+      - "完了報告で判定した実装方式を明示するよう変更"
+
+  - version: "2.0.0"
+    date: "2025-02-05"
+    changes:
+      - "初回リリース（form-handler.js 方式前提）"

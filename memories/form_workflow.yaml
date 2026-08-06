@@ -1,0 +1,1012 @@
+# =============================================================================
+# お問い合わせフォーム実装ワークフロー（v3.0.0）
+# =============================================================================
+# 目的: 既存フォームに Universal Form API 連携を追加（Server Action 方式）
+#
+# 対象: Next.js (App Router) + Universal Form API
+# 作成日: 2025-11-07
+# 最終更新: 2026-05-28
+# =============================================================================
+
+schema_version: "3.0.0"
+
+metadata:
+  workflow_name: "お問い合わせフォーム実装"
+  target_framework: "Next.js 13+ (App Router) + Universal Form API (Server Action / Token 認証)"
+  enforcement: "MANDATORY"
+  version: "3.0.0"
+  created: "2025-11-07"
+  updated: "2026-05-28"
+  author: "DefaultSetting Project"
+  description: |
+    既存フォームに Universal Form API 連携を追加（Server Action 方式・最新 UFA 対応）：
+    1. 既存フォームからフィールド情報を収集
+    2. 管理画面登録用JSON生成（Token 認証 + emailTemplate を inline HTML で持つ）
+    3. メールテンプレート生成（emailTemplate に直接入れる HTML 文字列）
+    4. Server Action（app/actions/submit-contact.ts）を新規作成
+    5. 既存フォーム（app/contact/page.tsx）を Server Action 呼び出しに修正
+    6. 環境変数ファイル（.env.local）の作成
+    7. セキュリティ対策の確認・完了報告
+
+    v3.0.0: form-handler.js / FormHandler.init 方式を廃止。
+    Server Action 経由でブラウザにトークンを露出しない新方式に変更。
+    UFA 側の honeypot (_hp_field) にも対応。
+
+# =============================================================================
+# トリガー設定
+# =============================================================================
+triggers:
+  main_keywords:
+    - "フォーム実装"
+
+  note: |
+    ⚠️ 注意: 誤発火を防ぐため、トリガーは「フォーム実装」のみに絞っています。
+    - ❌ "お問い合わせフォームを作成して" → 通常のフォーム作成（発火しない）
+    - ✅ "フォーム実装して" → Universal Form API を使ったフォーム実装（発火する）
+
+  action_keywords:
+    - "して"
+    - "お願い"
+    - "作成して"
+    - "実装して"
+    - "セットアップして"
+    - "設定して"
+
+  exclude_keywords:
+    - "必要ですか"
+    - "方法"
+    - "教えて"
+    - "説明"
+    - "?"
+    - "？"
+
+# =============================================================================
+# 🚨 v3.0.0 で変わったこと（重要）
+# =============================================================================
+v3_changes:
+  removed:
+    - "form-handler.js の <Script> 読み込み"
+    - "(window as any).FormHandler 参照"
+    - "FormHandler.init() 呼び出し"
+    - "NEXT_PUBLIC_FORM_API_TOKEN（ブラウザに露出）"
+    - "emailTemplateId 方式（deprecated・API 側で警告）"
+    - "emailFromName（deprecated・API 側で警告）"
+    - "productionDomain（Token 認証では不要）"
+    - "formHandlerLoaded state"
+
+  added:
+    - "app/actions/submit-contact.ts （Server Action 新規作成）"
+    - "FORM_API_URL / FORM_API_SITE_ID / FORM_API_TOKEN の3つの環境変数（NEXT_PUBLIC_ なし）"
+    - "JSON の emailTemplate に HTML 文字列を inline で含める"
+    - "_hp_field hidden input（honeypot 対策）"
+    - "Server Action 内で _hp_field: '' を強制（bot 判定回避）"
+
+  reason: |
+    最新 UFA は Token 認証サイトに対し、ブラウザにトークンを出さない
+    Server Action 経由のサーバー送信を推奨する方針に変わりました。
+    また、2026-05-04 以降の UFA には _hp_field honeypot があり、
+    値が入っていると 200 偽装応答（DB insert・メール送信なし）になります。
+
+# =============================================================================
+# ワークフロー（7ステップ）
+# =============================================================================
+workflow:
+  step_1:
+    name: "サイト情報とフォームフィールドの決定"
+    status: "CRITICAL"
+    skip_allowed: false
+
+    description: |
+      app/ の実際のページファイルを見て、サイトの内容を分析し、
+      フォーム実装に必要な情報を収集する。
+      about.yaml は補完的に使用。
+
+    information_sources:
+      priority_1:
+        name: "app/ のファイル（実際のページ）"
+        process:
+          1: "app/contact/page.tsx を確認（既存のフォームがあるか）"
+          2: "既存フォームがある場合、そのフィールド構成を確認"
+          3: "app/ 配下の他の page.tsx を検索"
+          4: "各ページを read_file で読み込む"
+          5: "ページの内容を分析（h1, h2, テキスト、セクション）"
+          6: "会社の業種・サービス内容を特定"
+          7: "適切なフォームフィールドを推測"
+
+        existing_form_check:
+          description: "既存フォームがあれば、そのフィールド構成を最優先"
+          extraction:
+            - "<input name='...' /> のname属性を抽出"
+            - "<label>...</label> のラベルテキストを抽出"
+            - "required属性の有無を確認"
+            - "type属性（text, email, textarea）を確認"
+
+        extraction:
+          site_name:
+            sources:
+              - "app/page.tsx の h1 タグ"
+              - "metadata.title"
+              - "Hero セクションの会社名"
+
+          admin_email:
+            sources:
+              - "Footer の連絡先"
+              - "app/contact/ の既存フォーム"
+            fallback: "info@example.com（デフォルト、ユーザーに確認）"
+
+          production_domain:
+            source: "vercel.json の BASE_URL"
+            note: "Token 認証なので JSON には入れないが、テスト用に控えておく"
+
+          form_fields:
+            default: "name, email, company, phone, message（標準フィールド）"
+            important_note: |
+              ⚠️ CRITICAL: <select>要素を使う場合の注意
+              - JSON の fields 配列では type: "text" と指定する
+              - フロントエンドでは <select> タグを使用してOK
+              - 理由: API側でのバリデーションのため
+
+      priority_2:
+        name: "about.yaml（補完的・基本情報のみ）"
+        condition: "app/ のファイルで情報が不足する場合"
+        note: |
+          ⚠️ 重要: about.yaml からはフォームフィールド情報を取得しない。
+          フィールド情報は必ず app/contact/page.tsx から取得する。
+
+      priority_3:
+        name: "ユーザーに確認"
+        condition: "app/ と about.yaml のどちらからも情報が取得できない場合"
+        ask_user:
+          - "サイトID（英小文字・数字・アンダースコア(_)のみ、例: yourcompany）"
+          - "会社名"
+          - "通知メールアドレス"
+          - "必要なフォームフィールド"
+
+    default_fields:
+      - name: "name"
+        label: "お名前"
+        type: "text"
+        required: true
+      - name: "email"
+        label: "メールアドレス"
+        type: "email"
+        required: true
+      - name: "company"
+        label: "会社名"
+        type: "text"
+        required: false
+      - name: "phone"
+        label: "電話番号"
+        type: "text"
+        required: false
+      - name: "message"
+        label: "お問い合わせ内容"
+        type: "textarea"
+        required: true
+
+    honeypot_field:
+      description: |
+        ⚠️ _hp_field は UFA 側の honeypot 用フィールド。
+        - JSON の fields 配列には登録しない（UFA 側で内部処理）
+        - Client 側に hidden input として配置（人間には見えない）
+        - Server Action 内で必ず空文字 "" で送信する
+        - 値が入っていると UFA に bot 判定され、200 偽装応答で何も記録されない
+
+    site_id_validation:
+      allowed: "英小文字（a-z）、数字（0-9）、アンダースコア(_)"
+      forbidden: "ハイフン（-）、大文字、スペース、特殊文字"
+      reason: "Supabaseのテーブル名として使用されるため"
+      examples:
+        ok: ["mediaproof", "next_maison", "company123"]
+        ng: ["media-proof", "MediaProof", "media proof"]
+
+  step_2:
+    name: "管理画面登録用 JSON 生成（Token 認証 + emailTemplate inline）"
+    status: "CRITICAL"
+    skip_allowed: false
+
+    description: |
+      step_1 で収集した情報を基に、Universal Form API の管理画面に登録する JSON を生成する。
+
+      🚨 v3.0.0 変更点:
+      - emailTemplateId（deprecated）→ emailTemplate に HTML 文字列を直接入れる
+      - emailFromName は指定しない（API 側で固定）
+      - productionDomain は不要（Token 認証のため）
+      - requireToken: true
+
+    template: |
+      [
+        {
+          "id": "{site_id}",
+          "siteName": "{site_name}",
+          "adminEmail": "{admin_email}",
+          "emailSubject": "{email_subject}",
+          "emailTemplate": "{HTML_TEMPLATE_STRING}",
+          "requireToken": true,
+          "fields": [
+            {FIELDS_ARRAY}
+          ]
+        }
+      ]
+
+    placeholder_replacement:
+      site_id:
+        rule: "英小文字・数字・アンダースコア(_)のみ"
+      email_subject:
+        format: "【{site_name}】新しいお問い合わせ"
+      emailTemplate:
+        source: "step_2_5 で生成した HTML を JSON 文字列にエスケープして入れる"
+        note: |
+          改行は \n、ダブルクォートは \" にエスケープして JSON 文字列として有効にすること。
+          または、ユーザーに「管理画面で改行ありで貼り付けてください」とする運用も可。
+
+    output:
+      file: "管理画面登録用の JSON（チャット表示）"
+
+  step_2_5:
+    name: "メールテンプレート生成（emailTemplate に入れる HTML）"
+    status: "CRITICAL"
+    skip_allowed: false
+
+    description: |
+      step_1 で収集したフィールド情報を基に、HTML メールテンプレートを生成する。
+      この HTML は JSON の emailTemplate フィールドに直接入る。
+
+      🚨 重要: 条件分岐機能を使用
+      - 必須フィールド: 常に表示
+      - 任意フィールド: {{#if field}}...{{/if}} で囲む
+      - 任意フィールド未入力時メッセージ: {{^field}}...{{/field}} で表示
+
+    template_example: |
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <title>お問い合わせ通知</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .header { background-color: #f4f4f4; padding: 20px; text-align: center; }
+            .field { margin-bottom: 15px; padding: 10px; background-color: #f9f9f9; }
+            .label { font-weight: bold; color: #555; }
+            .note { color: #999; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2>新しいお問い合わせがありました</h2>
+          </div>
+          <div class="field">
+            <div class="label">お名前</div>
+            <div>{{name}}</div>
+          </div>
+          <div class="field">
+            <div class="label">メールアドレス</div>
+            <div>{{email}}</div>
+          </div>
+          {{#if company}}
+          <div class="field">
+            <div class="label">会社名</div>
+            <div>{{company}}</div>
+          </div>
+          {{/if}}
+          {{#if phone}}
+          <div class="field">
+            <div class="label">電話番号</div>
+            <div>{{phone}}</div>
+          </div>
+          {{/if}}
+          <div class="field">
+            <div class="label">お問い合わせ内容</div>
+            <div>{{message}}</div>
+          </div>
+          {{^company}}
+          <div class="note">※ 会社名は入力されませんでした</div>
+          {{/company}}
+          {{^phone}}
+          <div class="note">※ 電話番号は入力されませんでした</div>
+          {{/phone}}
+        </body>
+      </html>
+
+    generation_rules:
+      required_fields:
+        format: |
+          <div class="field">
+            <div class="label">{field.label}</div>
+            <div>{{field.name}}</div>
+          </div>
+
+      optional_fields:
+        format: |
+          {{#if field.name}}
+          <div class="field">
+            <div class="label">{field.label}</div>
+            <div>{{field.name}}</div>
+          </div>
+          {{/if}}
+
+          {{^field.name}}
+          <div class="note">※ {field.label}は入力されませんでした</div>
+          {{/field.name}}
+
+  step_3:
+    name: "Server Action（app/actions/submit-contact.ts）を新規作成"
+    status: "CRITICAL"
+    skip_allowed: false
+
+    description: |
+      Universal Form API への送信処理を Server Action として作成する。
+      この処理はブラウザでは走らず、サーバー側でのみ実行される。
+      トークンはサーバー環境変数 FORM_API_TOKEN からのみ参照する。
+
+    method: "write（新規ファイル作成）"
+    file_path: "app/actions/submit-contact.ts"
+
+    sandbox_note: |
+      ⚠️ app/actions/ ディレクトリが存在しない場合は作成する。
+      必要に応じて required_permissions: ['all'] を指定。
+
+    code_template: |
+      "use server";
+
+      const API_URL = process.env.FORM_API_URL;
+      const SITE_ID = process.env.FORM_API_SITE_ID;
+
+      export type ContactInput = {
+        // step_1 のフィールドに合わせて定義
+        name: string;
+        email: string;
+        company?: string;
+        phone?: string;
+        message: string;
+      };
+
+      export type SubmitContactResult =
+        | { ok: true }
+        | { ok: false; message: string };
+
+      function sanitize(value: string | undefined | null): string {
+        if (typeof value !== "string") return "";
+        return value.replace(/<[^>]*>/g, "").trim();
+      }
+
+      function validate(input: ContactInput): string[] {
+        const errors: string[] = [];
+        if (!input.name?.trim()) errors.push("お名前は必須です");
+        if (!input.email?.trim()) errors.push("メールアドレスは必須です");
+        if (!input.message?.trim()) errors.push("お問い合わせ内容は必須です");
+
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (input.email && !emailPattern.test(input.email)) {
+          errors.push("メールアドレスの形式が正しくありません");
+        }
+        // 必要に応じて他フィールドのチェックを追加
+        return errors;
+      }
+
+      export async function submitContactForm(
+        input: ContactInput
+      ): Promise<SubmitContactResult> {
+        const token = process.env.FORM_API_TOKEN;
+
+        if (!API_URL || !SITE_ID || !token) {
+          return { ok: false, message: "フォーム送信設定が不足しています。" };
+        }
+
+        const errors = validate(input);
+        if (errors.length > 0) {
+          return { ok: false, message: errors.join(" / ") };
+        }
+
+        const formData: Record<string, string> = {
+          name: sanitize(input.name),
+          email: sanitize(input.email),
+          company: sanitize(input.company),
+          phone: sanitize(input.phone),
+          message: sanitize(input.message),
+          // 🚨 honeypot 用フィールド: 必ず空文字で送る（UFA 側で値が入ると bot 判定される）
+          _hp_field: "",
+        };
+
+        let response: Response;
+        try {
+          response = await fetch(API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ site_id: SITE_ID, formData }),
+          });
+        } catch (error) {
+          console.error("[submit-contact] fetch failed:", error);
+          return { ok: false, message: "ネットワークエラーが発生しました。" };
+        }
+
+        if (!response.ok) {
+          const detail = await response
+            .json()
+            .then((json) =>
+              typeof json?.message === "string" ? json.message : ""
+            )
+            .catch(() => "");
+
+          console.error(
+            "[submit-contact] API error:",
+            response.status,
+            detail
+          );
+          return {
+            ok: false,
+            message:
+              detail ||
+              `送信に失敗しました（HTTP ${response.status}）。時間をおいて再度お試しください。`,
+          };
+        }
+
+        return { ok: true };
+      }
+
+    critical_notes:
+      - "🚨 'use server' を必ず先頭に書く"
+      - "🚨 トークンは process.env.FORM_API_TOKEN（NEXT_PUBLIC_ なし）から読む"
+      - "🚨 formData に _hp_field: '' を必ず含める"
+      - "🚨 フィールドはステップ1で決定したものに合わせる"
+
+  step_4:
+    name: "既存フォーム（app/contact/page.tsx）を Server Action 呼び出しに修正"
+    status: "CRITICAL"
+    skip_allowed: false
+
+    description: |
+      既存の app/contact/page.tsx を読み込み、
+      form-handler.js 依存を削除して、Server Action 呼び出しに置き換える。
+
+      🚨 重要: 既存のデザイン・レイアウト・className はそのまま保持。
+
+    method: "search_replace（既存ファイルを修正）"
+
+    removal_targets:
+      description: "旧方式のコードを削除する"
+      to_remove:
+        - 'import Script from "next/script";'
+        - '<Script src="https://universal-form-api.vercel.app/form-handler.js" ... />'
+        - "(window as any).FormHandler 参照"
+        - "FormHandler.init(...) 呼び出し"
+        - "formHandlerLoaded state"
+        - "useEffect で FormHandler を待つロジック"
+
+    addition_targets:
+      step_a_use_client:
+        description: '"use client" を確認（無ければ追加）'
+
+      step_b_imports:
+        description: "Server Action と useState の import 追加"
+        add: |
+          import { useState } from "react";
+          import { submitContactForm } from "@/app/actions/submit-contact";
+
+      step_c_state:
+        description: "状態管理を追加"
+        add: |
+          const [isSubmitting, setIsSubmitting] = useState(false);
+          const [status, setStatus] = useState<{
+            type: "success" | "error" | null;
+            message: string;
+          }>({ type: null, message: "" });
+
+      step_d_handle_submit:
+        description: "handleSubmit を Server Action を呼ぶ実装に置き換え"
+        add: |
+          async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+            e.preventDefault();
+            setIsSubmitting(true);
+            setStatus({ type: null, message: "" });
+
+            const form = e.currentTarget;
+            const fd = new FormData(form);
+
+            const result = await submitContactForm({
+              name: String(fd.get("name") ?? ""),
+              email: String(fd.get("email") ?? ""),
+              company: String(fd.get("company") ?? ""),
+              phone: String(fd.get("phone") ?? ""),
+              message: String(fd.get("message") ?? ""),
+            });
+
+            setIsSubmitting(false);
+
+            if (result.ok) {
+              setStatus({
+                type: "success",
+                message: "送信完了しました。ありがとうございます。",
+              });
+              form.reset();
+            } else {
+              setStatus({ type: "error", message: result.message });
+            }
+          }
+
+      step_e_form_tag:
+        description: '既存の <form> に id="contactForm" と onSubmit を追加'
+        examples:
+          before: '<form className="space-y-4">'
+          after: '<form id="contactForm" onSubmit={handleSubmit} className="space-y-4">'
+
+      step_f_honeypot:
+        description: "honeypot 用 hidden input を追加（人間には見えない位置）"
+        add: |
+          <input
+            type="text"
+            name="_hp_field"
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden="true"
+            className="sr-only absolute left-[-9999px] w-px h-px overflow-hidden"
+          />
+        note: |
+          ⚠️ この hidden input 自体は実害がないが、人間が誤って値を入れないように
+          tabIndex={-1} と aria-hidden を必ず指定する。
+          Server Action 側で常に空文字 "" を送るため、二重防御。
+
+      step_g_submit_button:
+        description: "送信ボタンに disabled と動的テキストを追加"
+        examples:
+          before: '<button type="submit" className="bg-blue-600 ...">送信</button>'
+          after: |
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="bg-blue-600 ... disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? "送信中..." : "送信"}
+            </button>
+
+      step_h_status_message:
+        description: "</form> の直後にステータスメッセージを追加"
+        add: |
+          {status.type && (
+            <div
+              className={`mt-6 p-4 rounded-md border ${
+                status.type === "success"
+                  ? "bg-green-50 border-green-200 text-green-800"
+                  : "bg-red-50 border-red-200 text-red-800"
+              }`}
+            >
+              <pre className="whitespace-pre-wrap">{status.message}</pre>
+            </div>
+          )}
+
+    preserved_code:
+      - "既存のフォーム HTML 構造"
+      - "既存の className（デザイン）"
+      - "既存のレイアウト"
+      - "既存の <input>, <select>, <textarea>"
+      - "既存の pattern 属性"
+
+    complete_sample:
+      note: "v3.0.0 の完全動作するサンプル（フィールドは step_1 に合わせて調整）"
+      template: |
+        "use client";
+
+        import { useState } from "react";
+        import { submitContactForm } from "@/app/actions/submit-contact";
+
+        export default function ContactForm() {
+          const [isSubmitting, setIsSubmitting] = useState(false);
+          const [status, setStatus] = useState<{
+            type: "success" | "error" | null;
+            message: string;
+          }>({ type: null, message: "" });
+
+          async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+            e.preventDefault();
+            setIsSubmitting(true);
+            setStatus({ type: null, message: "" });
+
+            const form = e.currentTarget;
+            const fd = new FormData(form);
+
+            const result = await submitContactForm({
+              name: String(fd.get("name") ?? ""),
+              email: String(fd.get("email") ?? ""),
+              company: String(fd.get("company") ?? ""),
+              phone: String(fd.get("phone") ?? ""),
+              message: String(fd.get("message") ?? ""),
+            });
+
+            setIsSubmitting(false);
+
+            if (result.ok) {
+              setStatus({
+                type: "success",
+                message: "送信完了しました。ありがとうございます。",
+              });
+              form.reset();
+            } else {
+              setStatus({ type: "error", message: result.message });
+            }
+          }
+
+          return (
+            <div className="max-w-2xl mx-auto p-6">
+              <h2 className="text-2xl font-bold mb-6">お問い合わせフォーム</h2>
+
+              <form id="contactForm" onSubmit={handleSubmit}>
+                {/* honeypot（人間には見えない） */}
+                <input
+                  type="text"
+                  name="_hp_field"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                  className="sr-only absolute left-[-9999px] w-px h-px overflow-hidden"
+                />
+
+                {/* フィールドは step_1 で決定したものを配置 */}
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full bg-blue-600 text-white py-3 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? "送信中..." : "送信"}
+                </button>
+              </form>
+
+              {status.type && (
+                <div
+                  className={`mt-6 p-4 rounded-md border ${
+                    status.type === "success"
+                      ? "bg-green-50 border-green-200 text-green-800"
+                      : "bg-red-50 border-red-200 text-red-800"
+                  }`}
+                >
+                  <pre className="whitespace-pre-wrap">{status.message}</pre>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+    form_field_templates:
+      text:
+        template: |
+          <div className="mb-4">
+            <label htmlFor="{field.name}" className="block text-sm font-medium mb-2">
+              {field.label}{if field.required: " *"}
+            </label>
+            <input
+              type="text"
+              id="{field.name}"
+              name="{field.name}"
+              {if field.required: required}
+              maxLength={100}
+              pattern={"[^<>&\"']+"}
+              title="HTMLタグや特殊文字は使用できません"
+              className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+      email:
+        template: |
+          <div className="mb-4">
+            <label htmlFor="{field.name}" className="block text-sm font-medium mb-2">
+              {field.label}{if field.required: " *"}
+            </label>
+            <input
+              type="email"
+              id="{field.name}"
+              name="{field.name}"
+              {if field.required: required}
+              maxLength={255}
+              className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+      textarea:
+        template: |
+          <div className="mb-6">
+            <label htmlFor="{field.name}" className="block text-sm font-medium mb-2">
+              {field.label}{if field.required: " *"}
+            </label>
+            <textarea
+              id="{field.name}"
+              name="{field.name}"
+              {if field.required: required}
+              maxLength={5000}
+              rows={5}
+              title="HTMLタグは自動的に除去されます"
+              className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+  step_5:
+    name: "環境変数ファイル（.env.local）の自動作成"
+    status: "CRITICAL"
+    skip_allowed: false
+
+    description: |
+      v3.0.0 では3つの環境変数（すべて NEXT_PUBLIC_ なし）が必要。
+
+      🚨 重要: AIが自動的にファイルを作成する。
+
+    interaction_flow:
+      step_a:
+        ai_message: |
+          次に、API トークンを設定します。
+
+          以下の手順で API トークンを取得してください：
+
+          1. https://universal-form-api.vercel.app/auth/ にログイン
+          2. ダッシュボードで登録したサイトを選択
+          3. 「編集」タブを開く
+          4. 「API トークン管理」セクションでトークンをコピー
+
+          API トークンを貼り付けてください（ufa_ で始まる長い文字列）:
+
+      step_b:
+        user_input: "ufa_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        validation:
+          - "ufa_ で始まるか確認"
+          - "60文字以上あるか確認"
+
+      step_c:
+        ai_action: "🚨 write ツールで .env.local ファイルを自動作成（必須）"
+        file_path: ".env.local"
+
+        execution_rule: |
+          🚨 CRITICAL:
+          1. ユーザーに「手動で作成してください」と言わない
+          2. 必ず write ツールを使用して、AI が作成
+          3. .env.local は .gitignore に含まれるため、サンドボックス制限がかかる
+          4. write ツール実行時は required_permissions: ['all'] を指定
+
+        content_template: |
+          # Universal Form API - Token 認証（Server Action 方式 / v3.0.0）
+          # 管理画面: https://universal-form-api.vercel.app/auth/
+          #
+          # 🚨 NEXT_PUBLIC_ は絶対に付けない（トークンがブラウザに露出するため）
+
+          FORM_API_URL=https://universal-form-api.vercel.app/api/submit
+          FORM_API_SITE_ID={site_id}
+          FORM_API_TOKEN={api_token}
+
+        handling_existing_file:
+          description: "既存の .env.local がある場合"
+          steps:
+            1: "read_file で既存内容を読み込む"
+            2: "既存内容を保持しつつ、3つの環境変数を追加または更新"
+            3: "🚨 既存に NEXT_PUBLIC_FORM_API_TOKEN がある場合は削除する（v2 の残骸）"
+            4: "write ツールで保存"
+
+    gitignore_check:
+      action: |
+        1. .gitignore を read_file で読み込む
+        2. .env.local が含まれているか確認
+        3. 含まれていない場合は追加（search_replace）
+
+      add_to_gitignore: |
+        # 環境変数（機密情報）
+        .env.local
+        .env*.local
+
+    output:
+      file: ".env.local"
+      message: |
+        ✅ .env.local ファイルを作成しました（v3.0.0）
+
+        環境変数（3つ・すべて NEXT_PUBLIC_ なし）:
+        - FORM_API_URL
+        - FORM_API_SITE_ID
+        - FORM_API_TOKEN
+
+        ⚠️ 重要:
+        - このファイルは Git にコミットしないでください
+        - .gitignore に追加済みです
+        - NEXT_PUBLIC_FORM_API_TOKEN がもし残っていれば削除してください
+
+  step_6:
+    name: "セキュリティ対策の確認"
+    status: "MANDATORY"
+    skip_allowed: false
+
+    required_security:
+      server_action_level:
+        - "FORM_API_TOKEN を環境変数から読む（NEXT_PUBLIC_ なし）"
+        - "sanitize 関数で HTML タグ除去"
+        - "validate 関数で必須・形式チェック"
+        - "_hp_field: '' を必ず送信ペイロードに含める"
+
+      form_level:
+        - "maxLength 属性（文字数制限）"
+        - "pattern 属性（危険な文字の制限）"
+        - "required 属性（必須項目指定）"
+        - "_hp_field hidden input が tabIndex={-1} と aria-hidden で人間に見えない"
+
+    validation:
+      check_1: "Server Action 内に sanitize / validate / _hp_field='' が実装されているか"
+      check_2: "Client 側に _hp_field hidden input があり、人間には見えないか"
+      check_3: "フォーム要素に maxLength, pattern, required が設定されているか"
+      check_4: "FORM_API_TOKEN が NEXT_PUBLIC_ なしになっているか"
+      check_5: "form-handler.js / FormHandler.init / (window as any).FormHandler が一切残っていないか"
+
+    output_on_success: |
+      ✅ セキュリティ対策が実装されています（v3.0.0）
+
+    output_on_failure: |
+      ⚠️ 以下のセキュリティ対策が不足しています：
+      - {missing_security_measures}
+
+  step_7:
+    name: "完了報告とテスト手順の提示"
+    status: "MANDATORY"
+    skip_allowed: false
+
+    output_template: |
+      ✅ お問い合わせフォームの実装が完了しました！（v3.0.0 / Server Action 方式）
+
+      📋 生成・修正されたファイル:
+      1. 管理画面登録用 JSON（emailTemplate に HTML 文字列を inline）
+      2. HTML メールテンプレート（JSON 内に含む）
+      3. app/actions/submit-contact.ts（Server Action - 新規作成）
+      4. app/contact/page.tsx（form-handler.js 依存を削除、Server Action 呼び出しに変更）
+      5. .env.local（環境変数 3 つ - 自動作成済み）
+
+      🔧 次のステップ:
+
+      【1】管理画面での登録
+      1. https://universal-form-api.vercel.app/auth/ にログイン
+      2. サイトを登録
+         - 「一括登録 (JSON)」ボタンをクリック
+         - 生成された JSON をペーストして登録
+         - emailTemplate に HTML 文字列が入っていることを確認
+      3. API トークンをコピー
+         - 「編集」タブ → 「API トークン管理」
+         - このトークンを Step 5 で入力済み
+
+      【2】環境変数の設定（自動完了）
+      ✅ .env.local ファイルは Step 5 で自動作成済みです
+
+      内容:
+      ```
+      FORM_API_URL=https://universal-form-api.vercel.app/api/submit
+      FORM_API_SITE_ID={site_id}
+      FORM_API_TOKEN=ufa_xxxx...
+      ```
+
+      ⚠️ NEXT_PUBLIC_ は絶対に付けないこと。
+
+      【3】ローカルでのテスト
+      ```bash
+      npm run dev
+      # http://localhost:3000/contact にアクセス
+      ```
+      1. すべてのフィールドに値を入力して送信
+      2. 必須フィールドを空にしてエラー確認
+      3. ブラウザのソースに ufa_ で始まる文字列が一切出ていないことを確認
+      4. Network タブで /api/submit のレスポンスを確認
+         - 200 success かつ管理画面にデータが入っていれば成功
+         - 200 success だが管理画面に何もなければ honeypot 発動 → _hp_field を疑う
+
+      【4】管理画面でのデータ確認
+      1. 管理画面の「データ確認」を開く
+      2. テストデータが保存されているか確認
+      3. 通知メールが届いているか確認
+
+      【5】本番環境への展開
+      ```bash
+      git add app/actions/submit-contact.ts app/contact/page.tsx
+      git commit -m "Migrate contact form to UFA Server Action (v3.0.0)"
+      git push origin main
+      ```
+      1. Vercel の Environment Variables に下記 3 つを追加（NEXT_PUBLIC_ なし）
+         - FORM_API_URL
+         - FORM_API_SITE_ID
+         - FORM_API_TOKEN（🚨 Sensitive Variable にする）
+      2. Vercel にデプロイ
+      3. 本番環境からテスト送信
+
+      ⚠️ 注意事項:
+      - adminEmail は最初テスト用にしておき、動作確認後に本番用へ変更
+      - 旧 NEXT_PUBLIC_FORM_API_TOKEN が残っていれば必ず削除
+      - form-handler.js を読み込んでいる古い <Script> タグが残っていないか確認
+
+# =============================================================================
+# トラブルシューティング（v3.0.0）
+# =============================================================================
+troubleshooting:
+  issue_1:
+    problem: "200 が返るがダッシュボードに記録されない / メールも来ない"
+    cause: |
+      UFA 側の honeypot 発動。
+      _hp_field に空文字以外の値が入って送信されている。
+      UFA は bot とみなして 200 success を偽装し、DB insert・メール送信を一切しない。
+    solutions:
+      - "Server Action 内で formData._hp_field = '' を強制的にセットしているか確認"
+      - "Client 側の hidden input がオートフィル等で値を入れていないか確認"
+      - "tabIndex={-1} と aria-hidden が指定されているか確認"
+      - "ブラウザの Network タブで送信 payload の _hp_field が空文字か確認"
+
+  issue_2:
+    problem: "403 Forbidden: Invalid or missing API token"
+    cause: "FORM_API_TOKEN が未設定 / 古い / typo"
+    solutions:
+      - ".env.local に FORM_API_TOKEN がある（NEXT_PUBLIC_ なし）か確認"
+      - "Vercel の Environment Variables に同じ変数があるか確認"
+      - "管理画面で再生成されていないか確認（regenerate 後は新トークン）"
+
+  issue_3:
+    problem: "404 Site not found or inactive"
+    cause: "FORM_API_SITE_ID が typo / サイトが管理画面で is_active=false"
+    solutions:
+      - "FORM_API_SITE_ID と管理画面のサイト ID が完全一致するか"
+      - "管理画面でサイトの「有効」フラグを確認"
+
+  issue_4:
+    problem: "500 Server error"
+    cause: |
+      UFA 側のテーブル不整合（contacts_<site_id> が存在しない / RLS ポリシー未設定）。
+      クライアント側では対応不可。
+    solutions:
+      - "UFA 管理者に連絡し、contacts_<site_id> テーブルと RLS ポリシーの状態を確認してもらう"
+      - "管理画面で該当サイトを再登録できれば再登録（既存データに注意）"
+
+  issue_5:
+    problem: "ブラウザのソースに ufa_ トークンが見える"
+    cause: "NEXT_PUBLIC_FORM_API_TOKEN を使ってしまっている / Client Component から token を参照している"
+    solutions:
+      - "FORM_API_TOKEN（NEXT_PUBLIC_ なし）に変更"
+      - "Client Component からは Server Action を呼ぶだけにし、token を一切渡さない"
+      - ".env.local と Vercel 両方を確認"
+
+  issue_6:
+    problem: "form-handler.js が読み込まれない / FormHandler is undefined"
+    cause: "v2.0.0 の残骸。v3.0.0 では form-handler.js は使わない"
+    solutions:
+      - '<Script src="...form-handler.js" /> を削除'
+      - "(window as any).FormHandler の参照を全部削除"
+      - "FormHandler.init() の呼び出しを削除"
+      - "Server Action 呼び出しに置き換える"
+
+# =============================================================================
+# 参考ドキュメント
+# =============================================================================
+references:
+  universal_form_api_repo:
+    docs:
+      - "docs/secure-form-single.md - 単一フォーム実装"
+      - "docs/secure-form-multiple.md - 複数フォーム実装"
+
+  universal_form_api_admin:
+    url: "https://universal-form-api.vercel.app/auth/"
+    description: "管理画面"
+
+# =============================================================================
+# 変更履歴
+# =============================================================================
+changelog:
+  - version: "3.0.0"
+    date: "2026-05-28"
+    changes:
+      - "🚨 BREAKING: form-handler.js / FormHandler.init 方式を廃止"
+      - "🚨 BREAKING: Server Action 方式（app/actions/submit-contact.ts）に変更"
+      - "🚨 BREAKING: 環境変数を FORM_API_URL / FORM_API_SITE_ID / FORM_API_TOKEN（NEXT_PUBLIC_ なし）に変更"
+      - "🚨 BREAKING: NEXT_PUBLIC_FORM_API_TOKEN を廃止（ブラウザ露出を防ぐ）"
+      - "🚨 BREAKING: emailTemplateId 廃止 → emailTemplate に HTML 文字列を直接 inline"
+      - "🚨 BREAKING: emailFromName 廃止（API 側で固定）"
+      - "honeypot 対策追加: _hp_field hidden input を Client に配置 + Server Action で常に空文字送信"
+      - "ステップ構成を 7 ステップに刷新（Server Action 作成ステップを追加）"
+      - "(window as any) / eslint-disable が不要に"
+      - "ファイル添付機能は MVP では対応外（必要なら別途仕様確認）"
+
+  - version: "2.0.0"
+    date: "2025-11-23"
+    changes:
+      - "Token 認証方式に切り替え（旧 v2）"
+      - "（v3.0.0 で全面刷新済み）"
+
+  - version: "1.0.0"
+    date: "2025-11-07"
+    changes:
+      - "初回リリース"

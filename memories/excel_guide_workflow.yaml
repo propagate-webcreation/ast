@@ -1,0 +1,121 @@
+# Excel Site Guide Generation
+
+Site-Fixディレクトリの3つのファイル（README、generate_site_guide.py、config_sample.yaml）を参照し、
+以下の手順でサイト構成ガイドのExcelファイルを生成してください。
+
+## 手順
+
+1. Site-Fix/README (3).md を読み、ツールの使い方を理解する
+2. Site-Fix/config_sample (2).yaml を読み、config.yamlの書き方を理解する
+3. app/components/shared/Header.tsx を確認し、ナビゲーションのリンク順でページ順を決定
+4. app/components/shared/Footer.tsx を確認し、フッターの内容を把握
+5. 各ページの page.tsx を確認し、コンポーネントの並び順を把握：
+   - app/home/page.tsx
+   - app/articles/page.tsx
+   - app/about/page.tsx
+   - app/contact/page.tsx
+   - その他存在するページ
+6. 各コンポーネントファイル（.tsx）の内容を読み込み、テキスト要素を抽出
+7. ページ順・セクション順に従って Site-Fix/config.yaml を作成
+   **🚨 重要: 既存の config.yaml があっても、必ず現在のサイトファイルから新規作成（上書き）する**
+   **🚨 ファイル書き込みは必ずターミナルコマンドを使用する（Cursorのwriteツールは使用禁止）**
+   ```bash
+   cat > Site-Fix/config.yaml << 'EOF'
+   # config.yamlの内容
+   EOF
+   ```
+8. Excelファイルを生成（既存ファイル対応）
+
+## ファイル名・シート名・タイトルの命名規則（重要）
+
+**🚨 先方名は config.yaml の `site_name` から取得する**
+
+- **ファイル名**: `{先方名}様_構成シート.xlsx`
+  - 例: `三浦基礎様_構成シート.xlsx`
+- **シート上部タイトル**: `{先方名}様 - サイト構成ガイド`
+  - 例: `三浦基礎様 - サイト構成ガイド`
+- **シート名（既存ファイルに追加時）**: `サイト構成ガイド_{YYYYMMDD_HHMMSS}`
+  - 例: `サイト構成ガイド_20241212_143025`
+- **シート名（新規ファイル作成時）**: `サイト構成ガイド_{YYYYMMDD_HHMMSS}`
+  - 例: `サイト構成ガイド_20241212_143025`
+
+## Excelファイル生成ルール（重要）
+
+1. `Site-Fix/input/` に既存の `.xlsx` ファイルがあるか確認
+2. **既存ファイルがある場合:**
+   - そのExcelファイルを開く
+   - 「{先方名}様_構成シート_{YYYYMMDD_HHMMSS}」という新しいシートを**一番左（先頭）**に追加
+   - 既存のシートは削除せず保持（履歴として残る）
+   - 新しいシートにサイト構成ガイドの内容を書き込む
+3. **既存ファイルがない場合:**
+   - 新規Excelファイルを `Site-Fix/input/` に作成
+
+## Pythonスクリプト例
+
+```python
+import openpyxl
+import os
+import glob
+import yaml
+from datetime import datetime
+
+# config.yamlから先方名を取得（site_nameを使用）
+with open('config.yaml', 'r', encoding='utf-8') as f:
+    config = yaml.safe_load(f)
+site_name = config.get('site_name', 'サイト')  # 例: "三浦基礎"
+
+# 既存ファイルを検索
+input_dir = 'Site-Fix/input'
+existing_files = glob.glob(os.path.join(input_dir, '*.xlsx'))
+existing_files = [f for f in existing_files if not os.path.basename(f).startswith('~$')]
+
+# タイムスタンプを生成
+timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+sheet_name = f"サイト構成ガイド_{timestamp}"
+
+if existing_files:
+    # 既存ファイルを開く（最新のもの）
+    existing_files.sort(key=os.path.getmtime, reverse=True)
+    filepath = existing_files[0]
+    wb = openpyxl.load_workbook(filepath)
+    
+    # 新しいシートを作成し、一番左に移動（既存シートは保持）
+    ws = wb.create_sheet(sheet_name, 0)
+else:
+    # 新規ファイルを作成
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = sheet_name
+    filepath = os.path.join(input_dir, f'{site_name}様_構成シート.xlsx')
+
+# シート上部タイトル（{先方名}様 - サイト構成ガイド形式）
+ws['A1'] = f'{site_name}様 - サイト構成ガイド'
+
+# シートにサイト構成ガイドの内容を書き込む
+# ...
+
+wb.save(filepath)
+```
+
+## config.yaml の作成ルール（必ず新規作成）
+
+**🚨 重要: /excel-guide 実行時は、既存の config.yaml の有無に関わらず、
+必ず現在のサイトファイル（.tsx）からテキストを抽出して config.yaml を新規作成する。**
+
+理由：サイトの内容は随時更新されるため、古い config.yaml を使うと最新の状態が反映されない。
+
+- site_name: 英数字のみ（ファイル名に使用）
+- common_sections: ヘッダー・フッター（全ページ共通）
+- pages: 各ページの定義（Header.tsx のナビ順に従う）
+  - name: ページ名
+  - sections: セクション一覧（page.tsx の並び順に従う）
+    - name: セクション名
+    - content: 内容（テキスト）
+
+## contentの記載ルール
+
+- 【セクション名】で始める
+- 見出し、説明文、ボタンを改行区切りで記載
+- ボタン・リンクは ► を先頭につける
+- 箇条書きは ・ を使用
+- サブセクションは ■ を使用

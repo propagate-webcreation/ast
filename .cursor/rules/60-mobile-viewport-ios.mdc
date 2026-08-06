@@ -1,0 +1,178 @@
+---
+description: "iOS Safari モバイルビューポート — アドレスバー伸縮によるレイアウトジャンプ防止"
+globs:
+  - "app/**/*.tsx"
+  - "components/**/*.tsx"
+  - "app/globals.css"
+alwaysApply: false
+---
+
+# iOS Safari モバイルビューポート対策
+
+> ⚠ legacy補助ルール: 矛盾時は `01-rule-priority-v3.mdc` と `05-v3-core.mdc` を優先する。
+
+iOS Safari ではスクロール時にアドレスバーが伸縮し、`vh` / `svh` / `dvh` が動的に再計算される。
+これにより画像のトリミング位置やレイアウトが「ガクン」と跳ねる（レイアウトジャンプ）。
+
+---
+
+## 1. ビューポート単位による画像ジャンプ
+
+### 禁止
+
+| 禁止 | 理由 |
+|------|------|
+| モバイルでの `h-[90vh]` / `h-[90svh]` / `h-[90dvh]`（画像を含む要素） | アドレスバー伸縮で `object-cover` のトリミング位置が再計算され画像がガクンと跳ねる |
+
+### 対策
+
+モバイル（< 768px）では `useEffect` 内で `window.innerHeight` を **1回だけ** 取得しピクセル値で固定する。
+`resize` リスナーは付けない（値を変えないことが目的）。
+CSS 側はピクセル値のフォールバックを設定し、JS 無効時にも表示される。
+
+```tsx
+const sectionRef = useRef<HTMLElement>(null);
+useEffect(() => {
+  if (window.innerWidth < 768 && sectionRef.current) {
+    const h = window.innerHeight * 0.88;
+    sectionRef.current.style.height = `${Math.max(h, 500)}px`;
+  }
+}, []);
+```
+
+```tsx
+{/* CSS フォールバック: SP は固定値、PC は vh */}
+<section ref={sectionRef} className="h-[500px] md:h-[90vh]">
+```
+
+---
+
+## 2. scroll-behavior: smooth の干渉
+
+### 禁止
+
+| 禁止 | 理由 |
+|------|------|
+| `html { scroll-behavior: smooth }` をモバイルに適用 | iOS のネイティブモメンタムスクロールと干渉しスクロール開始時にガクンとなる |
+
+### 対策
+
+`layout.tsx` の `<html>` にレスポンシブクラスを付与する。globals.css に書かない。
+
+```tsx
+<html lang="ja" className="scroll-auto md:scroll-smooth">
+```
+
+必要に応じて `overscroll-none` を追加（ラバーバンド抑制）。
+
+---
+
+## 3. mix-blend-multiply の fixed 要素
+
+### 禁止
+
+| 禁止 | 理由 |
+|------|------|
+| `position: fixed` + `mix-blend-multiply` の全画面オーバーレイをモバイルに表示 | スクロール毎フレームの GPU 再合成でフレーム落ちする |
+
+### 対策
+
+```tsx
+{/* 和紙テクスチャ等のオーバーレイは PC のみ */}
+<div className="hidden md:block fixed inset-0 mix-blend-multiply pointer-events-none" />
+```
+
+---
+
+## 4. backdrop-blur の動的追加
+
+### 禁止
+
+| 禁止 | 理由 |
+|------|------|
+| JS でスクロール時に `backdrop-blur-sm` を動的に付与（モバイル） | モバイル GPU に負荷がかかりフレーム落ちする |
+
+### 対策
+
+`backdrop-blur` は PC 版のみ適用する。モバイルのヘッダーは見た目を変化させない（背景色・パディング固定）。
+
+```tsx
+{/* ✅ ヘッダーの背景ぼかしは PC のみ */}
+<header className="sticky top-0 bg-white/95 md:backdrop-blur-sm z-50">
+```
+
+既存の `17-page-layout` でヘッダーに `backdrop-blur-sm` が記載されている場合は、`md:backdrop-blur-sm` に置き換える。
+
+---
+
+## 5. transition-all の副作用
+
+### 禁止
+
+| 禁止 | 理由 |
+|------|------|
+| `transition-all` | パディング・高さなど意図しないプロパティまでアニメーションしレイアウトジャンプの原因になる |
+
+### 対策
+
+アニメーション対象プロパティを明示する。モバイルでは `md:transition-*` で PC 版のみ適用も検討する。
+
+```tsx
+{/* ❌ */}
+<header className="transition-all duration-500">
+
+{/* ✅ 対象プロパティを明示 */}
+<header className="transition-[background-color,box-shadow] duration-500">
+```
+
+---
+
+## 6. ヒーローコンテンツのオーバーフロー
+
+### 禁止
+
+| 禁止 | 理由 |
+|------|------|
+| ヒーローに `overflow-hidden` + ビューポート単位の高さ（モバイル） | コンテンツ量がビューポートを超えやすく CTA やインジケーターが見切れる |
+
+### 対策
+
+モバイル向けに余白・フォントサイズを圧縮する。PC 版の値は `md:` で維持。
+
+```tsx
+{/* SP: 余白圧縮・文字縮小 / PC: 通常値 */}
+<div className="pt-[40px] md:pt-[80px] gap-3 md:gap-6">
+  <h1 className="text-[32px] md:text-[40px]">...</h1>
+  <p className="text-[13px] md:text-[16px]">...</p>
+</div>
+```
+
+---
+
+## 7. スクロールイベントリスナーの passive 指定
+
+### 禁止
+
+| 禁止 | 理由 |
+|------|------|
+| `{ passive: true }` なしの scroll / touchmove リスナー | ブラウザがスクロールをブロックしうるため、モバイルでカクつく原因になる |
+
+### 対策
+
+```tsx
+useEffect(() => {
+  const handleScroll = () => { /* ... */ };
+  window.addEventListener("scroll", handleScroll, { passive: true });
+  return () => window.removeEventListener("scroll", handleScroll);
+}, []);
+```
+
+---
+
+## 既存ルールとの関係
+
+| ルール | 関連する対策 |
+|--------|------------|
+| `14-mobile-first` | プレフィックスなし = モバイル。PC 値は必ず `md:` 付き |
+| `17-page-layout` | ヘッダーの `backdrop-blur-sm` → `md:backdrop-blur-sm` に修正 |
+| `18-common-impl` | スクロール検知パターンに `{ passive: true }` を追加、`transition-all` を対象明示に変更 |
