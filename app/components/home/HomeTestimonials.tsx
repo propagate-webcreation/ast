@@ -14,14 +14,14 @@ const testimonials = [
         texts: [
           { text: "李さんの指導で" },
           { text: "短期間で確実に伝わる発音を習得", bold: true },
-          { text: "し、今では商談でも自信を持って中国語で話せるようになりました。" },
+          { text: "し、今では" },
+          { text: "商談でも自信を持って中国語で話せる", bold: true },
+          { text: "ようになりました。" },
         ],
       },
       {
         texts: [
-          { text: "会社の中国人同僚に" },
-          { text: "『発音が綺麗』と褒められています！", bold: true },
-          { text: "とても自信になりました！" },
+          { text: "会社の中国人同僚に『発音が綺麗』と褒められています！とても自信になりました！" },
         ],
       },
     ],
@@ -38,13 +38,15 @@ const testimonials = [
       {
         texts: [
           { text: "習い始めて" },
-          { text: "1ヶ月が過ぎた時、中国人と話す機会があって、会話ができたことに驚きました。", bold: true },
+          { text: "1ヶ月で中国人と会話ができた", bold: true },
+          { text: "ことに驚きました。" },
         ],
       },
       {
         texts: [
-          { text: "初心者で" },
-          { text: "『できるだけ短期間で話せるようになりたい』と思う方にはこの勉強法は本当にオススメです。", bold: true },
+          { text: "初心者で『できるだけ" },
+          { text: "短期間で話せるようになりたい", bold: true },
+          { text: "』と思う方にはこの勉強法は本当にオススメです。" },
         ],
       },
     ],
@@ -70,19 +72,21 @@ const testimonials = [
       },
       {
         texts: [
-          { text: "講座内容はとてもわかりやすく、全て日本語で説明しているので、" },
-          { text: "ストレスなく、学習を進めることができました。", bold: true },
+          { text: "講座内容はとてもわかりやすく、" },
+          { text: "全て日本語で説明している", bold: true },
+          { text: "ので、ストレスなく、学習を進めることができました。" },
         ],
       },
       {
         texts: [
-          { text: "オンラインで勉強するので、上海にきて勉強を続けることができたので、とても助かりました。" },
+          { text: "オンラインで勉強するので、" },
+          { text: "上海にきても勉強を続けることができた", bold: true },
+          { text: "ので、とても助かりました。" },
         ],
       },
       {
         texts: [
-          { text: "中国に来る前にしっかりと中国語を学んで", bold: true },
-          { text: "本当によかったと思います。", bold: true },
+          { text: "中国に来る前にしっかりと中国語を学んで本当によかったと思います。" },
         ],
       },
     ],
@@ -150,12 +154,12 @@ export default function HomeTestimonials() {
               {/* 本文 */}
               <div className="flex flex-col gap-3">
                 {item.paragraphs.map((para, j) => (
-                  <p key={j} className="text-[16px] leading-[1.8] text-[#111]">
+                  <p key={j} className="text-[17px] leading-[1.8] text-[#111]">
                     {para.texts.map((seg, k) =>
                       seg.bold ? (
                         <span
                           key={k}
-                          className="text-[18px] font-black bg-gradient-to-r from-[#8B0000] to-[#C8A35A] bg-clip-text text-transparent"
+                          className="text-[19px] font-black bg-gradient-to-r from-[#8B0000] to-[#C8A35A] bg-clip-text text-transparent"
                         >
                           {seg.text}
                         </span>
