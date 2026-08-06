@@ -32,9 +32,8 @@ export default function HomeMethod() {
               <span className="relative z-10">「使える中国語」</span>
               <span className="absolute bottom-[2px] left-0 w-full h-[8px] bg-[#F5D998]/30 z-0" aria-hidden />
             </span>
-            を
             <br />
-            習得できます。
+            を習得できます。
           </h2>
         </div>
       </div>

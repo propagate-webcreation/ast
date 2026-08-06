@@ -53,7 +53,7 @@ export default function HomePitfallsDetail() {
             <br />
             ありません。
           </h2>
-          <p className="inline-block text-[16px] text-[#222] mt-4 font-serif font-bold bg-[#8B0000]/8 px-4 py-1.5">
+          <p className="inline-block text-[19px] text-[#222] mt-4 font-serif font-bold bg-[#8B0000]/8 px-4 py-1.5">
             実は多くの人が陥る
             <span className="font-bold text-[#8B0000]">落とし穴</span>
             が…
