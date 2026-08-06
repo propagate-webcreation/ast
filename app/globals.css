@@ -20,12 +20,16 @@
   --font-family-display: var(--font-display);
   --font-family-body: var(--font-body);
   --font-family-sans: var(--font-body);
+  --font-family-serif: "Noto Serif JP", serif;
 }
 
 /* 見出しに表示用フォントを直接適用 */
 /* setup-font-project.js が自動的に追加します */
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-display);
+/* @layer base 内に配置し、Tailwind の font-serif 等で上書き可能にする */
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
 }
 
 /* テキスト折り返し最適化 ※必須 — 削除・変更禁止
@@ -41,7 +45,7 @@ h1, h2, h3, h4, h5, h6 {
   text-wrap: balance;
 }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: auto; }
 
 @media screen and (max-width: 768px) {
   html { -webkit-text-size-adjust: 100%; }
