@@ -21,7 +21,7 @@ export default function HomeMethod() {
       {/* 上部：深紅背景の見出し */}
       <div className="bg-[#8B0000] px-5 py-[40px]">
         <div className="text-center">
-          <h2 className="text-[28px] font-bold leading-[1.6] text-white font-serif">
+          <h2 className="text-[28px] font-bold leading-[1.6] text-white font-serif [text-wrap:wrap]">
             <span className="text-[#F5D998]">李琳中国語講座</span>
             <span className="text-[22px]">なら、</span>
             <br />
