@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { MOBILE_VIEWPORT_MAX_WIDTH } from "../shared/constants";
 
-const HERO_IMAGE = "/img/hero.png";
+const HERO_IMAGE = "/img/ChatGPT Image 2026年8月12日 18_10_04.png";
 
 export default function HomeHero() {
   return (
@@ -10,8 +10,8 @@ export default function HomeHero() {
         <Image
           src={HERO_IMAGE}
           alt="中国語を学んだのに話せないあなたへ。6カ月でビジネスの現場でも使えるレベルに。オーダーメイドのオンライン個別指導"
-          width={682}
-          height={1024}
+          width={1024}
+          height={1536}
           className="w-full h-auto"
           priority
           sizes={`(max-width: ${MOBILE_VIEWPORT_MAX_WIDTH}px) 100vw, ${MOBILE_VIEWPORT_MAX_WIDTH}px`}
