@@ -6,8 +6,9 @@ import MobileViewport from "./components/shared/MobileViewport";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Default Setting",
-  description: "Webサイト制作用の初期設定環境",
+  title: "李琳中国語講座 | オンライン個別指導",
+  description:
+    "ビジネスで使える中国語を最短6ヶ月で。完全オーダーメイドのオンライン個別指導。週1回のZoom指導＋毎日の課題添削＋チャット無制限サポートで、仕事の現場で伝わる中国語が身につきます。まずはLINEで無料相談。",
 };
 
 export default function RootLayout({
