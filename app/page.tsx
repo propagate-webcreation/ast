@@ -17,7 +17,6 @@ export default function Home() {
   return (
     <main>
       <HomeHero />
-      <HomeLineCta />
       <HomeConcerns />
       <HomeFeatures />
       <HomeLineCta id="line-cta-2" />
