@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { MOBILE_VIEWPORT_MAX_WIDTH } from "../shared/constants";
 
-const HERO_IMAGE = "/directors-bot-uploads/d0fdc172-54d9-44ee-9e6f-6613ed943bb0/1790770759869-4s34m4-00-asuto.png";
+const HERO_IMAGE = "/directors-bot-uploads/d0fdc172-54d9-44ee-9e6f-6613ed943bb0/1790772700556-dse10c-00-アスとFVV.png";
 const LINE_URL =
   "https://s.lmes.jp/landing-qr/2005618555-L9eozWy0?uLand=MEfnZ7";
 
