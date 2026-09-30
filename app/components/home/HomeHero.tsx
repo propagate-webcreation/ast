@@ -8,13 +8,13 @@ const LINE_URL =
 export default function HomeHero() {
   return (
     <section id="hero" aria-label="メインビジュアル" className="w-full bg-white">
-      <div className="relative w-full mx-auto">
+      <div className="relative w-full mx-auto overflow-hidden">
         <Image
           src={HERO_IMAGE}
           alt="中国語を学んだのに話せないあなたへ。6カ月でビジネスの現場でも使えるレベルに。累計生徒数700名以上、通訳歴8年、日本在住20年。LINE登録でビジネス中国語完全マスター動画をプレゼント"
           width={652}
           height={1024}
-          className="w-full h-auto"
+          className="w-full h-auto -mt-[11px]"
           priority
           sizes={`(max-width: ${MOBILE_VIEWPORT_MAX_WIDTH}px) 100vw, ${MOBILE_VIEWPORT_MAX_WIDTH}px`}
         />

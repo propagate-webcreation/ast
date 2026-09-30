@@ -3,7 +3,7 @@ const HEADER_IMAGE =
 
 export default function HomeHeader() {
   return (
-    <header className="w-full">
+    <header className="w-full sticky top-0 z-50">
       <img src={HEADER_IMAGE} alt="" className="w-full h-auto block" />
     </header>
   );
