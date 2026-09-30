@@ -1,3 +1,4 @@
+import HomeHeader from "./components/home/HomeHeader";
 import HomeHero from "./components/home/HomeHero";
 import HomeLineCta from "./components/home/HomeLineCta";
 import HomeConcerns from "./components/home/HomeConcerns";
@@ -16,6 +17,7 @@ import HomePitfallsDetail from "./components/home/HomePitfallsDetail";
 export default function Home() {
   return (
     <main>
+      <HomeHeader />
       <HomeHero />
       <HomeConcerns />
       <HomeFeatures />
