@@ -49,7 +49,7 @@ export default function MobileViewport({ children }: MobileViewportProps) {
   }, []);
 
   return (
-    <div className="overflow-x-hidden bg-gray-100">
+    <div className="overflow-x-clip bg-gray-100">
       <div
         ref={wrapperRef}
         className="bg-white"
