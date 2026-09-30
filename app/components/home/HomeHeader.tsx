@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { MOBILE_VIEWPORT_MAX_WIDTH } from "../shared/constants";
 import { useLpViewportScale } from "../shared/useLpViewportScale";
 
-const HEADER_IMAGE = "/img/header-bar.png";
+const HEADER_IMAGE = "/directors-bot-uploads/d0fdc172-54d9-44ee-9e6f-6613ed943bb0/1790773465098-kuv4bb-00-最新NE.png";
 /** LP 画像と同じ基準幅（652） */
 const HEADER_WIDTH = 652;
 const HEADER_HEIGHT = Math.round((89 / 1024) * HEADER_WIDTH);
