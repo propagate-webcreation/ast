@@ -2,6 +2,7 @@ import "../lib/fonts/_active.css";
 import "../lib/fonts/_vars.css";
 import type { Metadata } from "next";
 import Script from "next/script";
+import LineLinkDecorator from "./components/shared/LineLinkDecorator";
 import MobileViewport from "./components/shared/MobileViewport";
 import "./globals.css";
 
@@ -25,7 +26,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased font-body bg-gray-100">
+      <body className="antialiased font-body bg-gray-100">
       {/* ADNAVI_GTM_START */}
       <Script id="adnavi-gtm" strategy="afterInteractive">{`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-PXP95SMC');`}</Script>
       <noscript>
@@ -39,6 +40,7 @@ export default function RootLayout({
       </noscript>
       {/* ADNAVI_GTM_END */}
         <MobileViewport>{children}</MobileViewport>
+        <LineLinkDecorator />
         {/* [重要] — 削除・変更禁止 */}
         <Script
           src="https://site-annotator.vercel.app/tracker.js"
