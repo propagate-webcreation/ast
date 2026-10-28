@@ -3,7 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // エルメ（L Message）のパラメーターエクスポートの受け取り口。
 // 友だち追加のたびにエルメがGETで呼び出すので、LPで付け足した cid1〜cid3 を使って
-// MetaのコンバージョンAPIへ「実際の友だち追加」をリードとして送る。
+// MetaのコンバージョンAPIへ「実際の友だち追加」を送る。
+//   Lead            新規・ブロック解除で、広告のクリック情報（fbc/fbp）があるもの（広告の成果）
+//   LineAddNoClick  新規・ブロック解除だが、クリック情報が無いもの（照合用）
+//   LineAddExisting 既存の友だち（照合用）
 //
 // 必要な環境変数:
 //   LME_CALLBACK_KEY      エルメに登録するURLの ?key= と一致させる合言葉
@@ -62,16 +65,14 @@ export async function GET(request: NextRequest) {
   const friendType = findFriendType(params);
   const lineId = findLineId(params);
 
-  // 既存の友だちが同じリンクを開き直しただけの場合は、新しい登録として数えない
+  // 広告の成果（Lead）にするのは、新規・ブロック解除で広告のクリック情報があるものだけ。
+  // それ以外も別名のイベントで送り、Vercelのログを見なくても
+  // イベントマネージャでエルメの友だち追加数と照合できるようにする。
+  let eventName = "Lead";
   if (friendType === "old") {
-    console.log("[lme-callback] skipped: existing friend");
-    return NextResponse.json({ ok: true, sent: false, reason: "existing_friend" });
-  }
-
-  // 広告由来と判断できる値が無ければ、Metaには送らない
-  if (!fbc && !fbp) {
-    console.log("[lme-callback] skipped: no fbc/fbp");
-    return NextResponse.json({ ok: true, sent: false, reason: "no_click_id" });
+    eventName = "LineAddExisting";
+  } else if (!fbc && !fbp) {
+    eventName = "LineAddNoClick";
   }
 
   const pixelId = process.env.META_PIXEL_ID;
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
 
   const eventTime = Math.floor(Date.now() / 1000);
   // 同じ友だち追加が重複して届いても、Meta側で1件にまとめられるようにする
-  const eventId = `line_add_${sha256(`${lineId || fbc || fbp}:${friendType}`).slice(0, 32)}`;
+  const eventId = `line_add_${sha256(`${lineId || fbc || fbp}:${friendType}:${eventName}`).slice(0, 32)}`;
 
   const userData: Record<string, unknown> = {};
   if (fbc) userData.fbc = fbc;
@@ -94,15 +95,19 @@ export async function GET(request: NextRequest) {
   const body: Record<string, unknown> = {
     data: [
       {
-        event_name: "Lead",
+        event_name: eventName,
         event_time: eventTime,
         event_id: eventId,
-        action_source: "website",
+        // ウェブのイベントはブラウザ情報が必須のため、無い場合は「その他」として送る
+        action_source: userAgent ? "website" : "other",
         event_source_url: EVENT_SOURCE_URL,
         user_data: userData,
         custom_data: {
           content_name: "line_friend_add",
           friend_type: friendType || "unknown",
+          has_fbc: fbc ? "yes" : "no",
+          has_fbp: fbp ? "yes" : "no",
+          has_user_agent: userAgent ? "yes" : "no",
         },
       },
     ],
@@ -126,8 +131,8 @@ export async function GET(request: NextRequest) {
       console.error("[lme-callback] Meta error", JSON.stringify(result));
       return NextResponse.json({ ok: false, reason: "meta_error" });
     }
-    console.log("[lme-callback] sent", JSON.stringify(result));
-    return NextResponse.json({ ok: true, sent: true });
+    console.log("[lme-callback] sent", eventName, JSON.stringify(result));
+    return NextResponse.json({ ok: true, sent: true, event: eventName });
   } catch (error) {
     console.error("[lme-callback] request failed", String(error));
     return NextResponse.json({ ok: false, reason: "request_failed" });
